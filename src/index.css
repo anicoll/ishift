@@ -383,6 +383,44 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
   background: #fff5f5; border: 1px solid #ffc9c9;
 }
 
+/* ── AutoFill modal ──────────────────────────────────────────────────────── */
+.autofill { display: flex; flex-direction: column; gap: 16px; }
+
+.autofill__empty {
+  color: var(--text-muted); font-size: 14px; text-align: center; padding: 12px 0;
+}
+
+.autofill__summary { display: flex; gap: 10px; flex-wrap: wrap; }
+.autofill__stat {
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 13px; font-weight: 600;
+}
+.autofill__stat--ok  { background: #e6f4ea; color: #2e7d32; border: 1px solid #a5d6a7; }
+.autofill__stat--warn { background: #fff8e1; color: #f57f17; border: 1px solid #ffe082; }
+
+.autofill__list {
+  display: flex; flex-direction: column;
+  max-height: 340px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+
+.autofill__row {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.autofill__row:last-child { border-bottom: none; }
+
+.autofill__row-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+.autofill__shift-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.autofill__shift-name { font-weight: 600; font-size: 13px; }
+.autofill__date { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+.autofill__row-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.autofill__unfilled { font-size: 12px; color: #f57f17; }
+
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

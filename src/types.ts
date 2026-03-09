@@ -9,7 +9,8 @@ export interface Worker {
   name: string;
   role: string;
   color: string;
-  tagIds: string[]; // tags this worker has
+  tagIds: string[];         // tags this worker holds
+  maxShiftsPerWeek: number; // upper bound used by the autofill algorithm
 }
 
 export interface ShiftType {
@@ -19,6 +20,7 @@ export interface ShiftType {
   end: string;   // "HH:MM"
   color: string;
   requiredTagIds: string[]; // workers must hold ALL of these tags to be assignable
+  minWorkers: number;       // target coverage used by the autofill algorithm
 }
 
 export interface Assignment {

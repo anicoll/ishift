@@ -10,9 +10,10 @@ interface WorkerFormData {
   role: string;
   color: string;
   tagIds: string[];
+  maxShiftsPerWeek: number;
 }
 
-const EMPTY_FORM: WorkerFormData = { name: '', role: '', color: '#4f8ef7', tagIds: [] };
+const EMPTY_FORM: WorkerFormData = { name: '', role: '', color: '#4f8ef7', tagIds: [], maxShiftsPerWeek: 5 };
 
 const PRESET_COLORS = [
   '#4f8ef7', '#e0544b', '#34c98b', '#f9a825',
@@ -39,7 +40,7 @@ export function WorkersView({ workers, tags, store }: Props) {
 
   function openEdit(w: Worker) {
     setEditing(w);
-    setForm({ name: w.name, role: w.role, color: w.color, tagIds: [...w.tagIds] });
+    setForm({ name: w.name, role: w.role, color: w.color, tagIds: [...w.tagIds], maxShiftsPerWeek: w.maxShiftsPerWeek });
     setModalOpen(true);
   }
 
@@ -83,7 +84,9 @@ export function WorkersView({ workers, tags, store }: Props) {
                 </div>
                 <div className="card__info">
                   <span className="card__name">{w.name}</span>
-                  <span className="card__sub">{w.role || 'No role'}</span>
+                  <span className="card__sub">
+                    {w.role || 'No role'}{' · '}max {w.maxShiftsPerWeek}/wk
+                  </span>
                   {workerTags.length > 0 && (
                     <div className="card__tags">
                       {workerTags.map(t => <TagBadge key={t.id} tag={t} size="sm" />)}
@@ -155,6 +158,17 @@ export function WorkersView({ workers, tags, store }: Props) {
               />
             </div>
           </div>
+          <label className="form__label">
+            Max Shifts / Week (autofill limit)
+            <input
+              className="form__input"
+              type="number"
+              min={1}
+              max={7}
+              value={form.maxShiftsPerWeek}
+              onChange={e => setForm(f => ({ ...f, maxShiftsPerWeek: Math.max(1, Number(e.target.value)) }))}
+            />
+          </label>
           {tags.length > 0 && (
             <div className="form__label">
               Tags / Qualifications

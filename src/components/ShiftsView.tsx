@@ -11,10 +11,11 @@ interface ShiftFormData {
   end: string;
   color: string;
   requiredTagIds: string[];
+  minWorkers: number;
 }
 
 const EMPTY_FORM: ShiftFormData = {
-  name: '', start: '08:00', end: '16:00', color: '#34c98b', requiredTagIds: [],
+  name: '', start: '08:00', end: '16:00', color: '#34c98b', requiredTagIds: [], minWorkers: 1,
 };
 
 const PRESET_COLORS = [
@@ -53,6 +54,7 @@ export function ShiftsView({ shifts, tags, store }: Props) {
     setForm({
       name: s.name, start: s.start, end: s.end,
       color: s.color, requiredTagIds: [...s.requiredTagIds],
+      minWorkers: s.minWorkers,
     });
     setModalOpen(true);
   }
@@ -99,6 +101,7 @@ export function ShiftsView({ shifts, tags, store }: Props) {
                   <span className="card__name">{s.name}</span>
                   <span className="card__sub">
                     {formatTime(s.start)} – {formatTime(s.end)}
+                    {' · '}{s.minWorkers} worker{s.minWorkers !== 1 ? 's' : ''} min
                   </span>
                   {reqTags.length > 0 && (
                     <div className="card__tags">
@@ -161,6 +164,17 @@ export function ShiftsView({ shifts, tags, store }: Props) {
               />
             </label>
           </div>
+          <label className="form__label">
+            Min. Workers (autofill target)
+            <input
+              className="form__input"
+              type="number"
+              min={1}
+              max={50}
+              value={form.minWorkers}
+              onChange={e => setForm(f => ({ ...f, minWorkers: Math.max(1, Number(e.target.value)) }))}
+            />
+          </label>
           <div className="form__label">
             Color
             <div className="color-picker">
