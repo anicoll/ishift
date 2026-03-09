@@ -62,6 +62,8 @@ export interface Store {
   addShift: (data: Omit<ShiftType, 'id'>) => void;
   updateShift: (id: string, data: Partial<Omit<ShiftType, 'id'>>) => void;
   deleteShift: (id: string) => void;
+  // Shift ordering
+  reorderShifts: (ids: string[]) => void;
   // Assignments
   addAssignment: (data: Omit<Assignment, 'id'>) => void;
   addAssignments: (data: Omit<Assignment, 'id'>[]) => void;
@@ -154,6 +156,13 @@ export function useStore(): Store {
     setAssignments(prev => prev.filter(a => a.shiftId !== id));
   }, []);
 
+  const reorderShifts = useCallback((ids: string[]) => {
+    setShifts(prev => {
+      const map = new Map(prev.map(s => [s.id, s]));
+      return ids.flatMap(id => (map.has(id) ? [map.get(id)!] : []));
+    });
+  }, []);
+
   // Assignments
   const addAssignment = useCallback((data: Omit<Assignment, 'id'>) => {
     setAssignments(prev => [...prev, { id: uid(), ...data }]);
@@ -193,7 +202,7 @@ export function useStore(): Store {
     tags, workers, shifts, assignments,
     addTag, updateTag, deleteTag,
     addWorker, updateWorker, deleteWorker,
-    addShift, updateShift, deleteShift,
+    addShift, updateShift, deleteShift, reorderShifts,
     addAssignment, addAssignments, deleteAssignment, deleteAssignmentsForDates,
     getAssignmentsFor, eligibleWorkers,
   };

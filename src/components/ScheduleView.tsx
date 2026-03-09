@@ -19,7 +19,7 @@ interface Props {
   workers: Worker[];
   shifts: ShiftType[];
   tags: Tag[];
-  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments'>;
+  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments' | 'reorderShifts'>;
 }
 
 interface AssignFormData {
@@ -55,6 +55,10 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   // ── Drag-and-drop state ──────────────────────────────────────────────────
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropHover, setDropHover] = useState<string | null>(null); // "date:shiftId"
+
+  // ── Row-reorder drag state ───────────────────────────────────────────────
+  const [rowDragIndex, setRowDragIndex] = useState<number | null>(null);
+  const [rowDropIndex, setRowDropIndex] = useState<number | null>(null);
 
   // ── Sidebar filter state ─────────────────────────────────────────────────
   const [filterTagIds, setFilterTagIds] = useState<string[]>([]);
@@ -205,9 +209,27 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   function stopDrag() {
     setDrag(null);
     setDropHover(null);
+    setRowDragIndex(null);
+    setRowDropIndex(null);
+  }
+
+  function handleRowDragOver(e: React.DragEvent, index: number) {
+    if (rowDragIndex === null) return;
+    e.preventDefault();
+    setRowDropIndex(index);
+  }
+
+  function handleRowDrop(index: number) {
+    if (rowDragIndex === null || rowDragIndex === index) { stopDrag(); return; }
+    const reordered = [...shifts];
+    const [moved] = reordered.splice(rowDragIndex, 1);
+    reordered.splice(index, 0, moved);
+    store.reorderShifts(reordered.map(s => s.id));
+    stopDrag();
   }
 
   function handleCellDragOver(e: React.DragEvent, key: string) {
+    if (rowDragIndex !== null) return; // row reorder in progress
     if (drag && validDrops.has(key)) {
       e.preventDefault();
       e.dataTransfer.dropEffect = drag.type === 'move' ? 'move' : 'copy';
@@ -288,11 +310,24 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {shifts.map(shift => {
+                {shifts.map((shift, i) => {
                   const shiftReqTags = tags.filter(t => shift.requiredTagIds.includes(t.id));
+                  const isRowDropTarget = rowDropIndex === i && rowDragIndex !== i;
                   return (
-                    <tr key={shift.id}>
+                    <tr
+                      key={shift.id}
+                      className={isRowDropTarget ? 'schedule-row--drop-target' : undefined}
+                      onDragOver={e => handleRowDragOver(e, i)}
+                      onDrop={() => handleRowDrop(i)}
+                    >
                       <td className="schedule-table__shift-cell">
+                        <span
+                          className="shift-row-handle"
+                          title="Drag to reorder"
+                          draggable
+                          onDragStart={e => { e.stopPropagation(); setRowDragIndex(i); }}
+                          onDragEnd={stopDrag}
+                        >⠿</span>
                         <span className="shift-label" style={{ borderLeftColor: shift.color }}>
                           <strong>{shift.name}</strong>
                           <span className="shift-label__time">{shift.start}–{shift.end}</span>

@@ -125,6 +125,10 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
 
 .card__actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+.card__drag-handle { cursor: grab; color: var(--text-muted); font-size: 18px; padding: 0 4px; flex-shrink: 0; user-select: none; }
+.card__drag-handle:active { cursor: grabbing; }
+.card--drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
+
 /* ── Schedule table ──────────────────────────────────────────────────────── */
 .schedule-wrapper {
   overflow-x: auto;
@@ -163,9 +167,14 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
   background: #eff4ff; color: var(--primary);
 }
 
+.shift-row-handle { cursor: grab; color: var(--text-muted); font-size: 16px; padding: 0 6px 0 0; user-select: none; flex-shrink: 0; }
+.shift-row-handle:active { cursor: grabbing; }
+.schedule-row--drop-target > td { box-shadow: inset 0 -2px 0 var(--primary); }
+
 .schedule-table__shift-cell {
   padding: 10px 14px; background: var(--bg);
   width: 130px; min-width: 130px;
+  display: flex; align-items: flex-start;
 }
 
 .shift-label {
