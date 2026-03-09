@@ -26,7 +26,7 @@ const PRESET_COLORS = [
 interface Props {
   shifts: ShiftType[];
   tags: Tag[];
-  store: Pick<Store, 'addShift' | 'updateShift' | 'deleteShift'>;
+  store: Pick<Store, 'addShift' | 'updateShift' | 'deleteShift' | 'reorderShifts'>;
 }
 
 function formatTime(t: string) {
@@ -42,6 +42,8 @@ export function ShiftsView({ shifts, tags, store }: Props) {
   const [editing, setEditing] = useState<ShiftType | null>(null);
   const [form, setForm] = useState<ShiftFormData>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<ShiftType | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   function openAdd() {
     setEditing(null);
@@ -68,6 +70,34 @@ export function ShiftsView({ shifts, tags, store }: Props) {
     }));
   }
 
+  function handleDragStart(index: number) {
+    setDragIndex(index);
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    setDropIndex(index);
+  }
+
+  function handleDrop(index: number) {
+    if (dragIndex === null || dragIndex === index) {
+      setDragIndex(null);
+      setDropIndex(null);
+      return;
+    }
+    const reordered = [...shifts];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(index, 0, moved);
+    store.reorderShifts(reordered.map(s => s.id));
+    setDragIndex(null);
+    setDropIndex(null);
+  }
+
+  function handleDragEnd() {
+    setDragIndex(null);
+    setDropIndex(null);
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.name.trim()) return;
@@ -90,10 +120,20 @@ export function ShiftsView({ shifts, tags, store }: Props) {
         <p className="empty-hint">No shift types yet. Add your first shift type above.</p>
       ) : (
         <div className="card-grid">
-          {shifts.map(s => {
+          {shifts.map((s, i) => {
             const reqTags = tags.filter(t => s.requiredTagIds.includes(t.id));
             return (
-              <div key={s.id} className="card card--tall" style={{ borderTopColor: s.color }}>
+              <div
+                key={s.id}
+                className={`card card--tall${dropIndex === i && dragIndex !== i ? ' card--drop-target' : ''}`}
+                style={{ borderTopColor: s.color }}
+                draggable
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={e => handleDragOver(e, i)}
+                onDrop={() => handleDrop(i)}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="card__drag-handle" title="Drag to reorder">⠿</div>
                 <div className="card__avatar card__avatar--square" style={{ backgroundColor: s.color }}>
                   {s.name.charAt(0).toUpperCase()}
                 </div>
