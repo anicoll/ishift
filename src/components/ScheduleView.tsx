@@ -11,6 +11,7 @@ import { TagBadge } from './TagBadge';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AutoFillModal } from './AutoFillModal';
+import { ExportModal } from './ExportModal';
 
 // 0 = Monday … 6 = Sunday
 const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -51,6 +52,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   const [copyPrevWeekOpen, setCopyPrevWeekOpen] = useState(false);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
   // ── Drag-and-drop state ──────────────────────────────────────────────────
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -288,6 +290,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
           </button>
         )}
         <button className="btn btn--ghost" onClick={runAutoFill}>⚡ Auto-fill</button>
+        <button className="btn btn--ghost" onClick={() => setExportOpen(true)}>↓ Export</button>
         <button className="btn btn--primary" onClick={() => openAssign()}>+ Assign</button>
       </div>
 
@@ -631,6 +634,17 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         shifts={shifts}
         onConfirm={() => autoFillResult && store.addAssignments(autoFillResult.assignments)}
         onClose={() => setAutoFillOpen(false)}
+      />
+
+      <ExportModal
+        open={exportOpen}
+        defaultStart={toISODate(weekStart)}
+        defaultEnd={toISODate(days[6])}
+        assignments={store.assignments}
+        workers={workers}
+        shifts={shifts}
+        tags={tags}
+        onClose={() => setExportOpen(false)}
       />
     </div>
   );

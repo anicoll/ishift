@@ -594,3 +594,19 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Export modal ────────────────────────────────────────────────────────── */
+.export-modal__count { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+.export-modal__warn  { font-size: 12px; color: #f9a825; margin-bottom: 4px; }
+
+/* ── Print ───────────────────────────────────────────────────────────────── */
+.export-print-container { display: none; }
+
+@media print {
+  .export-print-container { display: block; }
+  .app-header, .view-toolbar, .workers-sidebar, .modal-overlay,
+  .btn, .schedule-layout > .workers-sidebar { display: none !important; }
+  .schedule-wrapper { overflow: visible !important; width: 100% !important; box-shadow: none !important; }
+  .schedule-table { box-shadow: none !important; }
+  body { background: white !important; color: black !important; }
+}
