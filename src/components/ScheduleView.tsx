@@ -16,7 +16,7 @@ interface Props {
   workers: Worker[];
   shifts: ShiftType[];
   tags: Tag[];
-  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments'>;
+  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments'>;
 }
 
 interface AssignFormData {
@@ -37,6 +37,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
     notes: '',
   });
   const [deleteTarget, setDeleteTarget] = useState<Assignment | null>(null);
+  const [clearWeekOpen, setClearWeekOpen] = useState(false);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
 
@@ -140,6 +141,11 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
           Today
         </button>
         <div className="spacer" />
+        {weekAssignments.length > 0 && (
+          <button className="btn btn--ghost btn--danger-text" onClick={() => setClearWeekOpen(true)}>
+            Clear week
+          </button>
+        )}
         <button className="btn btn--ghost" onClick={runAutoFill}>⚡ Auto-fill</button>
         <button className="btn btn--primary" onClick={() => openAssign()}>+ Assign</button>
       </div>
@@ -296,6 +302,13 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         message="Remove this assignment?"
         onConfirm={() => deleteTarget && store.deleteAssignment(deleteTarget.id)}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={clearWeekOpen}
+        message={`Remove all ${weekAssignments.length} assignment${weekAssignments.length === 1 ? '' : 's'} for this week?`}
+        onConfirm={() => store.deleteAssignmentsForDates(days.map(toISODate))}
+        onClose={() => setClearWeekOpen(false)}
       />
 
       <AutoFillModal

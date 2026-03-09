@@ -4,6 +4,12 @@ export interface Tag {
   color: string;
 }
 
+/** A time window within a single day. */
+export interface DayTimeRange {
+  start: string; // "HH:MM"
+  end: string;   // "HH:MM"
+}
+
 export interface Worker {
   id: string;
   name: string;
@@ -11,6 +17,13 @@ export interface Worker {
   color: string;
   tagIds: string[];         // tags this worker holds
   maxShiftsPerWeek: number; // upper bound used by the autofill algorithm
+  /**
+   * Per-day availability, indexed 0 (Monday) … 6 (Sunday).
+   * null  → worker is unavailable on that day.
+   * DayTimeRange → available during those hours.
+   * Omitted entirely → no restrictions (fully available).
+   */
+  availability: (DayTimeRange | null)[];
 }
 
 export interface ShiftType {

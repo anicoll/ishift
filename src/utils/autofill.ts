@@ -1,4 +1,4 @@
-import type { Worker, ShiftType, Assignment } from '../types';
+import type { Worker, ShiftType, Assignment, DayTimeRange } from '../types';
 import { weekDays, toISODate } from './dates';
 
 export interface AutoFillSlot {
@@ -14,6 +14,53 @@ export interface AutoFillResult {
   slots: AutoFillSlot[];
   /** Flat list ready to pass to addAssignments(). */
   assignments: Omit<Assignment, 'id'>[];
+}
+
+/**
+ * Returns the day-of-week index (0 = Monday … 6 = Sunday) for a "YYYY-MM-DD" string.
+ * Uses noon UTC to avoid DST edge-cases.
+ */
+export function dayOfWeekIndex(dateStr: string): number {
+  const jsDay = new Date(dateStr + 'T12:00:00Z').getUTCDay(); // 0=Sun, 1=Mon…6=Sat
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+/**
+ * Returns true when a worker's availability window covers a shift.
+ *
+ * For non-overnight shifts the worker's window must fully contain the shift
+ * (avail.start ≤ shift.start AND avail.end ≥ shift.end).
+ * For overnight shifts (e.g. 22:00–06:00) we only require the worker to
+ * be marked available on that day — hour-level checking across midnight is
+ * intentionally deferred to manual scheduling.
+ */
+export function availabilityCoversShift(avail: DayTimeRange, shift: ShiftType): boolean {
+  const isOvernight = shift.end < shift.start;
+  if (isOvernight) return true;
+  return avail.start <= shift.start && avail.end >= shift.end;
+}
+
+/**
+ * Returns true when `worker` is available to work `shift` on `dateStr`.
+ *
+ * Rules:
+ *  1. If the worker has no availability array (or it is empty), there are no
+ *     restrictions — the worker is considered fully available.
+ *  2. If availability[dayIndex] is null the worker is unavailable that day.
+ *  3. Otherwise the worker's time window must cover the shift hours.
+ */
+export function workerAvailableForShift(
+  worker: Worker,
+  dateStr: string,
+  shift: ShiftType,
+): boolean {
+  if (!worker.availability || worker.availability.length === 0) return true;
+
+  const dayIdx = dayOfWeekIndex(dateStr);
+  const avail = worker.availability[dayIdx];
+
+  if (avail === null || avail === undefined) return false;
+  return availabilityCoversShift(avail, shift);
 }
 
 /**
@@ -42,12 +89,13 @@ export function greedyAutoFill(
     weekCount.set(a.workerId, (weekCount.get(a.workerId) ?? 0) + 1);
   });
 
-  // Eligible workers per shift (those holding all required tags)
-  function eligibleFor(shift: ShiftType): Worker[] {
-    if (shift.requiredTagIds.length === 0) return workers;
-    return workers.filter(w =>
-      shift.requiredTagIds.every(tid => w.tagIds.includes(tid)),
-    );
+  // Eligible workers per (shift × date): must have required tags AND be available
+  function eligibleFor(shift: ShiftType, dateStr: string): Worker[] {
+    const tagFiltered =
+      shift.requiredTagIds.length === 0
+        ? workers
+        : workers.filter(w => shift.requiredTagIds.every(tid => w.tagIds.includes(tid)));
+    return tagFiltered.filter(w => workerAvailableForShift(w, dateStr, shift));
   }
 
   // Build the list of slots that need filling
@@ -74,7 +122,7 @@ export function greedyAutoFill(
         shift,
         alreadyAssignedIds: new Set(existing.map(a => a.workerId)),
         needed,
-        eligible: eligibleFor(shift),
+        eligible: eligibleFor(shift, dateStr),
       });
     }
   }
