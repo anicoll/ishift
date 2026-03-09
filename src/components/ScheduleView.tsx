@@ -12,6 +12,9 @@ import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AutoFillModal } from './AutoFillModal';
 
+// 0 = Monday … 6 = Sunday
+const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
 interface Props {
   workers: Worker[];
   shifts: ShiftType[];
@@ -24,6 +27,13 @@ interface AssignFormData {
   shiftId: string;
   workerId: string;
   notes: string;
+}
+
+interface DragState {
+  type: 'new' | 'move';
+  workerId: string;
+  /** ID of the assignment being moved (only set when type === 'move'). */
+  assignmentId?: string;
 }
 
 export function ScheduleView({ workers, shifts, tags, store }: Props) {
@@ -41,14 +51,24 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
 
+  // ── Drag-and-drop state ──────────────────────────────────────────────────
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [dropHover, setDropHover] = useState<string | null>(null); // "date:shiftId"
+
+  // ── Sidebar filter state ─────────────────────────────────────────────────
+  const [filterTagIds, setFilterTagIds] = useState<string[]>([]);
+  const [filterDayIndex, setFilterDayIndex] = useState<number | null>(null);
+  const [filterTime, setFilterTime] = useState('');
+
   const days = weekDays(weekStart);
+
+  // ── Assignment modal helpers ─────────────────────────────────────────────
 
   const selectedShift = shifts.find(s => s.id === form.shiftId);
   const requiredTags = selectedShift
     ? tags.filter(t => selectedShift.requiredTagIds.includes(t.id))
     : [];
 
-  // Workers eligible for the selected shift AND not already assigned to that date+shift slot
   const alreadyAssignedIds = useMemo(
     () => new Set(store.getAssignmentsFor(form.date, form.shiftId).map(a => a.workerId)),
     [store, form.date, form.shiftId],
@@ -78,26 +98,18 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
     setModalOpen(true);
   }
 
-  // When shift or date changes in the form, reset worker to first available one
   function handleShiftChange(shiftId: string) {
     const available = availableFor(form.date, shiftId);
-    setForm(f => ({
-      ...f,
-      shiftId,
-      workerId: available[0]?.id ?? '',
-    }));
+    setForm(f => ({ ...f, shiftId, workerId: available[0]?.id ?? '' }));
   }
 
   function handleDateChange(date: string) {
     const available = availableFor(date, form.shiftId);
-    setForm(f => ({
-      ...f,
-      date,
-      workerId: available[0]?.id ?? '',
-    }));
+    setForm(f => ({ ...f, date, workerId: available[0]?.id ?? '' }));
   }
 
-  // Assignments that fall within the current week (for the autofill algorithm)
+  // ── Week data ────────────────────────────────────────────────────────────
+
   const weekDateStrings = useMemo(() => new Set(days.map(toISODate)), [days]);
   const weekAssignments = useMemo(
     () => store.assignments.filter(a => weekDateStrings.has(a.date)),
@@ -110,12 +122,97 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
     setAutoFillOpen(true);
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!form.date || !form.shiftId || !form.workerId) return;
     store.addAssignment(form);
     setModalOpen(false);
   }
+
+  // ── Sidebar filter logic ──────────────────────────────────────────────────
+
+  function toggleFilterTag(tagId: string) {
+    setFilterTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId],
+    );
+  }
+
+  function toggleFilterDay(idx: number) {
+    setFilterDayIndex(prev => (prev === idx ? null : idx));
+  }
+
+  const hasActiveFilters = filterTagIds.length > 0 || filterDayIndex !== null || filterTime !== '';
+
+  const filteredWorkers = useMemo(() => {
+    return workers.filter(w => {
+      // Tag filter: worker must hold every selected tag
+      if (filterTagIds.length > 0 && !filterTagIds.every(tid => w.tagIds.includes(tid))) return false;
+
+      // Day + time filters combine against worker availability
+      if (filterDayIndex !== null) {
+        const avail = w.availability[filterDayIndex];
+        if (avail === null || avail === undefined) return false;
+        if (filterTime && (avail.start > filterTime || avail.end < filterTime)) return false;
+      } else if (filterTime) {
+        // No day selected: pass if available at this time on at least one day
+        const ok = w.availability.some(a => a !== null && a.start <= filterTime && a.end >= filterTime);
+        if (!ok) return false;
+      }
+
+      return true;
+    });
+  }, [workers, filterTagIds, filterDayIndex, filterTime]);
+
+  // ── Drag-and-drop logic ──────────────────────────────────────────────────
+
+  const validDrops = useMemo<Set<string>>(() => {
+    if (!drag) return new Set();
+    const worker = workers.find(w => w.id === drag.workerId);
+    if (!worker) return new Set();
+
+    const set = new Set<string>();
+    for (const day of days) {
+      const dateStr = toISODate(day);
+      for (const shift of shifts) {
+        if (!shift.requiredTagIds.every(tid => worker.tagIds.includes(tid))) continue;
+        const alreadyHere = store.assignments.some(
+          a => a.date === dateStr && a.shiftId === shift.id && a.workerId === drag.workerId,
+        );
+        if (alreadyHere) continue;
+        set.add(`${dateStr}:${shift.id}`);
+      }
+    }
+    return set;
+  }, [drag, days, shifts, workers, store.assignments]);
+
+  function stopDrag() {
+    setDrag(null);
+    setDropHover(null);
+  }
+
+  function handleCellDragOver(e: React.DragEvent, key: string) {
+    if (drag && validDrops.has(key)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = drag.type === 'move' ? 'move' : 'copy';
+      setDropHover(key);
+    }
+  }
+
+  function handleCellDrop(e: React.DragEvent, dateStr: string, shiftId: string) {
+    e.preventDefault();
+    if (!drag || !validDrops.has(`${dateStr}:${shiftId}`)) { stopDrag(); return; }
+
+    if (drag.type === 'move' && drag.assignmentId) {
+      const original = store.assignments.find(a => a.id === drag.assignmentId);
+      store.deleteAssignment(drag.assignmentId);
+      store.addAssignment({ date: dateStr, shiftId, workerId: drag.workerId, notes: original?.notes ?? '' });
+    } else {
+      store.addAssignment({ date: dateStr, shiftId, workerId: drag.workerId, notes: '' });
+    }
+    stopDrag();
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   if (shifts.length === 0) {
     return (
@@ -150,71 +247,223 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         <button className="btn btn--primary" onClick={() => openAssign()}>+ Assign</button>
       </div>
 
-      <div className="schedule-wrapper">
-        <table className="schedule-table">
-          <thead>
-            <tr>
-              <th className="schedule-table__corner">Shift</th>
-              {days.map(d => (
-                <th
-                  key={d.toISOString()}
-                  className={`schedule-table__day-head ${isToday(d) ? 'schedule-table__day-head--today' : ''}`}
-                >
-                  {formatDayHeader(d)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {shifts.map(shift => {
-              const shiftReqTags = tags.filter(t => shift.requiredTagIds.includes(t.id));
-              return (
-                <tr key={shift.id}>
-                  <td className="schedule-table__shift-cell">
-                    <span className="shift-label" style={{ borderLeftColor: shift.color }}>
-                      <strong>{shift.name}</strong>
-                      <span className="shift-label__time">{shift.start}–{shift.end}</span>
-                      {shiftReqTags.length > 0 && (
-                        <div className="shift-label__tags">
-                          {shiftReqTags.map(t => <TagBadge key={t.id} tag={t} size="sm" />)}
-                        </div>
-                      )}
-                    </span>
-                  </td>
-                  {days.map(day => {
-                    const dateStr = toISODate(day);
-                    const cellAssignments = store.getAssignmentsFor(dateStr, shift.id);
-                    const cellWorkers = cellAssignments
-                      .map(a => ({ assignment: a, worker: workers.find(w => w.id === a.workerId) }))
-                      .filter((x): x is { assignment: Assignment; worker: Worker } => x.worker !== undefined);
-
-                    return (
-                      <td
-                        key={dateStr}
-                        className={`schedule-table__cell ${isToday(day) ? 'schedule-table__cell--today' : ''}`}
-                        onClick={() => openAssign(dateStr, shift.id)}
-                      >
-                        <div className="cell-content">
-                          {cellWorkers.map(({ assignment, worker }) => (
-                            <span key={assignment.id} onClick={e => e.stopPropagation()}>
-                              <WorkerBadge
-                                worker={worker}
-                                onRemove={() => setDeleteTarget(assignment)}
-                              />
-                            </span>
-                          ))}
-                          <span className="cell-add-hint">+</span>
-                        </div>
+      <div className="schedule-layout" onDragEnd={stopDrag}>
+        {/* ── Schedule table ── */}
+        <div className="schedule-main">
+          <div className="schedule-wrapper">
+            <table className="schedule-table">
+              <thead>
+                <tr>
+                  <th className="schedule-table__corner">Shift</th>
+                  {days.map(d => (
+                    <th
+                      key={d.toISOString()}
+                      className={`schedule-table__day-head ${isToday(d) ? 'schedule-table__day-head--today' : ''}`}
+                    >
+                      {formatDayHeader(d)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shifts.map(shift => {
+                  const shiftReqTags = tags.filter(t => shift.requiredTagIds.includes(t.id));
+                  return (
+                    <tr key={shift.id}>
+                      <td className="schedule-table__shift-cell">
+                        <span className="shift-label" style={{ borderLeftColor: shift.color }}>
+                          <strong>{shift.name}</strong>
+                          <span className="shift-label__time">{shift.start}–{shift.end}</span>
+                          {shiftReqTags.length > 0 && (
+                            <div className="shift-label__tags">
+                              {shiftReqTags.map(t => <TagBadge key={t.id} tag={t} size="sm" />)}
+                            </div>
+                          )}
+                        </span>
                       </td>
+                      {days.map(day => {
+                        const dateStr = toISODate(day);
+                        const cellKey = `${dateStr}:${shift.id}`;
+                        const isValid = drag ? validDrops.has(cellKey) : null;
+                        const isHovered = dropHover === cellKey;
+
+                        const cellAssignments = store.getAssignmentsFor(dateStr, shift.id);
+                        const cellWorkers = cellAssignments
+                          .map(a => ({ assignment: a, worker: workers.find(w => w.id === a.workerId) }))
+                          .filter((x): x is { assignment: Assignment; worker: Worker } => x.worker !== undefined);
+
+                        let cellClass = 'schedule-table__cell';
+                        if (isToday(day)) cellClass += ' schedule-table__cell--today';
+                        if (drag) {
+                          if (isHovered) cellClass += ' cell--drop-hover';
+                          else if (isValid) cellClass += ' cell--drop-valid';
+                          else cellClass += ' cell--drop-invalid';
+                        }
+
+                        return (
+                          <td
+                            key={dateStr}
+                            className={cellClass}
+                            onClick={() => !drag && openAssign(dateStr, shift.id)}
+                            onDragOver={e => handleCellDragOver(e, cellKey)}
+                            onDragLeave={e => {
+                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                setDropHover(null);
+                              }
+                            }}
+                            onDrop={e => handleCellDrop(e, dateStr, shift.id)}
+                          >
+                            <div className="cell-content">
+                              {cellWorkers.map(({ assignment, worker }) => (
+                                <span
+                                  key={assignment.id}
+                                  draggable
+                                  className={`badge-drag-wrapper${drag?.assignmentId === assignment.id ? ' badge-drag-wrapper--dragging' : ''}`}
+                                  onClick={e => e.stopPropagation()}
+                                  onDragStart={(e) => {
+                                    e.stopPropagation();
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    setDrag({ type: 'move', workerId: worker.id, assignmentId: assignment.id });
+                                  }}
+                                  onDragEnd={stopDrag}
+                                >
+                                  <WorkerBadge
+                                    worker={worker}
+                                    onRemove={drag ? undefined : () => setDeleteTarget(assignment)}
+                                  />
+                                </span>
+                              ))}
+                              {!drag && <span className="cell-add-hint">+</span>}
+                              {drag && isValid && !isHovered && <span className="cell-drop-hint">+</span>}
+                              {drag && isHovered && <span className="cell-drop-hint cell-drop-hint--active">Drop</span>}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── Workers sidebar ── */}
+        {workers.length > 0 && (
+          <aside className="workers-sidebar">
+            <div className="workers-sidebar__header">
+              <span>Workers</span>
+              {hasActiveFilters && (
+                <button
+                  className="workers-sidebar__clear"
+                  onClick={() => { setFilterTagIds([]); setFilterDayIndex(null); setFilterTime(''); }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Tag filter */}
+            {tags.length > 0 && (
+              <div className="sidebar-section">
+                <div className="sidebar-section__label">Tag</div>
+                <div className="sidebar-filter-tags">
+                  {tags.map(t => {
+                    const active = filterTagIds.includes(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        className={`tag-toggle tag-toggle--sm ${active ? 'tag-toggle--active' : ''}`}
+                        style={active ? { backgroundColor: t.color + '22', borderColor: t.color, color: t.color } : {}}
+                        onClick={() => toggleFilterTag(t.id)}
+                      >
+                        {t.name}
+                      </button>
                     );
                   })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            )}
+
+            {/* Day filter */}
+            <div className="sidebar-section">
+              <div className="sidebar-section__label">Day</div>
+              <div className="day-filter">
+                {DAY_LABELS.map((label, i) => (
+                  <button
+                    key={i}
+                    className={`day-btn${filterDayIndex === i ? ' day-btn--active' : ''}`}
+                    onClick={() => toggleFilterDay(i)}
+                    title={['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i]}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time filter */}
+            <div className="sidebar-section">
+              <div className="sidebar-section__label">Time</div>
+              <div className="sidebar-time-filter">
+                <input
+                  type="time"
+                  className="form__input form__input--time"
+                  value={filterTime}
+                  onChange={e => setFilterTime(e.target.value)}
+                />
+                {filterTime && (
+                  <button className="btn btn--ghost btn--sm btn--icon" onClick={() => setFilterTime('')} title="Clear time">×</button>
+                )}
+              </div>
+            </div>
+
+            {/* Worker chips */}
+            <div className="workers-sidebar__chips">
+              {filteredWorkers.length === 0 ? (
+                <p className="workers-sidebar__empty">No workers match</p>
+              ) : (
+                filteredWorkers.map(w => {
+                  const workerTags = tags.filter(t => w.tagIds.includes(t.id));
+                  const isDraggingThis = drag?.workerId === w.id && drag.type === 'new';
+                  return (
+                    <div
+                      key={w.id}
+                      draggable
+                      className={`worker-chip worker-chip--block${isDraggingThis ? ' worker-chip--dragging' : ''}`}
+                      style={{ backgroundColor: w.color + '22', borderColor: w.color, color: w.color }}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'copy';
+                        setDrag({ type: 'new', workerId: w.id });
+                      }}
+                      onDragEnd={stopDrag}
+                    >
+                      <span className="worker-chip__dot" style={{ backgroundColor: w.color }} />
+                      <span className="worker-chip__name">{w.name}</span>
+                      {workerTags.length > 0 && (
+                        <div className="worker-chip__tags">
+                          {workerTags.map(t => (
+                            <span
+                              key={t.id}
+                              className="worker-chip__tag-dot"
+                              style={{ backgroundColor: t.color }}
+                              title={t.name}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="workers-sidebar__hint">Drag into schedule to assign</div>
+          </aside>
+        )}
       </div>
 
+      {/* ── Modals ── */}
       <Modal
         title={prefill ? 'Assign Worker' : 'New Assignment'}
         open={modalOpen}
