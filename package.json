@@ -9,7 +9,19 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{css,json,md}": "prettier --write"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -25,7 +37,11 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
+    "prettier": "^3.8.1",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
   }
