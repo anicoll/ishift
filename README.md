@@ -1,16 +1,26 @@
-# React + Vite
+# iShift
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A browser-based shift scheduling tool for small teams.
 
-Currently, two official plugins are available:
+**Live site:** https://anicoll.github.io/ishift/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## React Compiler
+- **Workers** — manage your team with roles, tag-based qualifications, availability windows, and max shifts per week
+- **Shift types** — define shifts with start/end times, required tags, and minimum worker counts
+- **Schedule** — assign workers to shifts across a weekly calendar view, with auto-scheduling based on eligibility and availability
+- **Tags** — create skill or certification tags (e.g. "First Aid", "Forklift Licensed") to filter eligible workers per shift
+- **Persistent state** — all data is saved to browser `localStorage`, so your schedule is preserved across page reloads and computer restarts
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech
 
-## Expanding the ESLint configuration
+- React + TypeScript
+- Vite
+- localStorage for persistence (no backend required)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Development
+
+```bash
+npm install
+npm run dev
+```
