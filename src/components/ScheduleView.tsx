@@ -1,20 +1,22 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Tag, Worker, ShiftType, Assignment } from '../types';
 import type { Store } from '../store/useStore';
 import {
   startOfWeek, weekDays, toISODate,
   formatDayHeader, formatWeekRange, isToday, addWeeks,
 } from '../utils/dates';
+import { greedyAutoFill, type AutoFillResult } from '../utils/autofill';
 import { WorkerBadge } from './WorkerBadge';
 import { TagBadge } from './TagBadge';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
+import { AutoFillModal } from './AutoFillModal';
 
 interface Props {
   workers: Worker[];
   shifts: ShiftType[];
   tags: Tag[];
-  store: Pick<Store, 'addAssignment' | 'deleteAssignment' | 'getAssignmentsFor' | 'eligibleWorkers'>;
+  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments'>;
 }
 
 interface AssignFormData {
@@ -35,37 +37,76 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
     notes: '',
   });
   const [deleteTarget, setDeleteTarget] = useState<Assignment | null>(null);
+  const [autoFillOpen, setAutoFillOpen] = useState(false);
+  const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
 
   const days = weekDays(weekStart);
 
-  // Derive eligible workers whenever the selected shift changes
-  const eligible = form.shiftId ? store.eligibleWorkers(form.shiftId) : workers;
   const selectedShift = shifts.find(s => s.id === form.shiftId);
   const requiredTags = selectedShift
     ? tags.filter(t => selectedShift.requiredTagIds.includes(t.id))
     : [];
 
+  // Workers eligible for the selected shift AND not already assigned to that date+shift slot
+  const alreadyAssignedIds = useMemo(
+    () => new Set(store.getAssignmentsFor(form.date, form.shiftId).map(a => a.workerId)),
+    [store, form.date, form.shiftId],
+  );
+  const eligible = useMemo(
+    () => (form.shiftId ? store.eligibleWorkers(form.shiftId) : workers)
+      .filter(w => !alreadyAssignedIds.has(w.id)),
+    [form.shiftId, store, workers, alreadyAssignedIds],
+  );
+
+  function availableFor(date: string, shiftId: string): Worker[] {
+    const assigned = new Set(store.getAssignmentsFor(date, shiftId).map(a => a.workerId));
+    return store.eligibleWorkers(shiftId).filter(w => !assigned.has(w.id));
+  }
+
   function openAssign(date?: string, shiftId?: string) {
+    const resolvedDate = date ?? toISODate(new Date());
     const resolvedShiftId = shiftId ?? shifts[0]?.id ?? '';
-    const eligibleForShift = store.eligibleWorkers(resolvedShiftId);
+    const available = availableFor(resolvedDate, resolvedShiftId);
     setForm({
-      date: date ?? toISODate(new Date()),
+      date: resolvedDate,
       shiftId: resolvedShiftId,
-      workerId: eligibleForShift[0]?.id ?? '',
+      workerId: available[0]?.id ?? '',
       notes: '',
     });
     setPrefill(date && shiftId ? { date, shiftId } : null);
     setModalOpen(true);
   }
 
-  // When shift selection changes, reset worker to first eligible one
+  // When shift or date changes in the form, reset worker to first available one
   function handleShiftChange(shiftId: string) {
-    const eligibleForShift = store.eligibleWorkers(shiftId);
+    const available = availableFor(form.date, shiftId);
     setForm(f => ({
       ...f,
       shiftId,
-      workerId: eligibleForShift[0]?.id ?? '',
+      workerId: available[0]?.id ?? '',
     }));
+  }
+
+  function handleDateChange(date: string) {
+    const available = availableFor(date, form.shiftId);
+    setForm(f => ({
+      ...f,
+      date,
+      workerId: available[0]?.id ?? '',
+    }));
+  }
+
+  // Assignments that fall within the current week (for the autofill algorithm)
+  const weekDateStrings = useMemo(() => new Set(days.map(toISODate)), [days]);
+  const weekAssignments = useMemo(
+    () => store.assignments.filter(a => weekDateStrings.has(a.date)),
+    [store.assignments, weekDateStrings],
+  );
+
+  function runAutoFill() {
+    const result = greedyAutoFill(weekStart, shifts, workers, weekAssignments);
+    setAutoFillResult(result);
+    setAutoFillOpen(true);
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -99,6 +140,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
           Today
         </button>
         <div className="spacer" />
+        <button className="btn btn--ghost" onClick={runAutoFill}>⚡ Auto-fill</button>
         <button className="btn btn--primary" onClick={() => openAssign()}>+ Assign</button>
       </div>
 
@@ -179,7 +221,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
               className="form__input"
               type="date"
               value={form.date}
-              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+              onChange={e => handleDateChange(e.target.value)}
               required
             />
           </label>
@@ -254,6 +296,15 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         message="Remove this assignment?"
         onConfirm={() => deleteTarget && store.deleteAssignment(deleteTarget.id)}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      <AutoFillModal
+        open={autoFillOpen}
+        result={autoFillResult}
+        workers={workers}
+        shifts={shifts}
+        onConfirm={() => autoFillResult && store.addAssignments(autoFillResult.assignments)}
+        onClose={() => setAutoFillOpen(false)}
       />
     </div>
   );

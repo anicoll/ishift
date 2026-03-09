@@ -29,15 +29,15 @@ const SEED_TAGS: Tag[] = [
 ];
 
 const SEED_WORKERS: Worker[] = [
-  { id: 'w1', name: 'Alice Johnson', role: 'Manager', color: '#4f8ef7', tagIds: ['t1', 't3'] },
-  { id: 'w2', name: 'Bob Smith',     role: 'Staff',   color: '#e0544b', tagIds: ['t2'] },
-  { id: 'w3', name: 'Carol White',   role: 'Staff',   color: '#34c98b', tagIds: ['t1'] },
+  { id: 'w1', name: 'Alice Johnson', role: 'Manager', color: '#4f8ef7', tagIds: ['t1', 't3'], maxShiftsPerWeek: 5 },
+  { id: 'w2', name: 'Bob Smith',     role: 'Staff',   color: '#e0544b', tagIds: ['t2'],        maxShiftsPerWeek: 5 },
+  { id: 'w3', name: 'Carol White',   role: 'Staff',   color: '#34c98b', tagIds: ['t1'],        maxShiftsPerWeek: 4 },
 ];
 
 const SEED_SHIFTS: ShiftType[] = [
-  { id: 's1', name: 'Morning',   start: '06:00', end: '14:00', color: '#f9a825', requiredTagIds: [] },
-  { id: 's2', name: 'Afternoon', start: '14:00', end: '22:00', color: '#7e57c2', requiredTagIds: ['t1'] },
-  { id: 's3', name: 'Night',     start: '22:00', end: '06:00', color: '#1976d2', requiredTagIds: ['t3'] },
+  { id: 's1', name: 'Morning',   start: '06:00', end: '14:00', color: '#f9a825', requiredTagIds: [],     minWorkers: 1 },
+  { id: 's2', name: 'Afternoon', start: '14:00', end: '22:00', color: '#7e57c2', requiredTagIds: ['t1'], minWorkers: 1 },
+  { id: 's3', name: 'Night',     start: '22:00', end: '06:00', color: '#1976d2', requiredTagIds: ['t3'], minWorkers: 1 },
 ];
 
 // ── store hook ────────────────────────────────────────────────────────────────
@@ -61,16 +61,41 @@ export interface Store {
   deleteShift: (id: string) => void;
   // Assignments
   addAssignment: (data: Omit<Assignment, 'id'>) => void;
+  addAssignments: (data: Omit<Assignment, 'id'>[]) => void;
   deleteAssignment: (id: string) => void;
   getAssignmentsFor: (date: string, shiftId: string) => Assignment[];
   /** Workers who have all tags required by the given shift. */
   eligibleWorkers: (shiftId: string) => Worker[];
 }
 
+// ── migration helpers (fill in fields added after initial release) ────────────
+
+function migrateWorker(w: Worker): Worker {
+  return {
+    ...w,
+    tagIds: w.tagIds ?? [],
+    maxShiftsPerWeek: w.maxShiftsPerWeek ?? 5,
+  };
+}
+
+function migrateShift(s: ShiftType): ShiftType {
+  return {
+    ...s,
+    requiredTagIds: s.requiredTagIds ?? [],
+    minWorkers: s.minWorkers ?? 1,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function useStore(): Store {
   const [tags, setTags] = useState<Tag[]>(() => load('ishift_tags', SEED_TAGS));
-  const [workers, setWorkers] = useState<Worker[]>(() => load('ishift_workers', SEED_WORKERS));
-  const [shifts, setShifts] = useState<ShiftType[]>(() => load('ishift_shifts', SEED_SHIFTS));
+  const [workers, setWorkers] = useState<Worker[]>(() =>
+    load('ishift_workers', SEED_WORKERS).map(migrateWorker),
+  );
+  const [shifts, setShifts] = useState<ShiftType[]>(() =>
+    load('ishift_shifts', SEED_SHIFTS).map(migrateShift),
+  );
   const [assignments, setAssignments] = useState<Assignment[]>(() => load('ishift_assignments', []));
 
   useEffect(() => { persist('ishift_tags', tags); }, [tags]);
@@ -127,6 +152,10 @@ export function useStore(): Store {
     setAssignments(prev => [...prev, { id: uid(), ...data }]);
   }, []);
 
+  const addAssignments = useCallback((data: Omit<Assignment, 'id'>[]) => {
+    setAssignments(prev => [...prev, ...data.map(d => ({ id: uid(), ...d }))]);
+  }, []);
+
   const deleteAssignment = useCallback((id: string) => {
     setAssignments(prev => prev.filter(a => a.id !== id));
   }, []);
@@ -153,7 +182,7 @@ export function useStore(): Store {
     addTag, updateTag, deleteTag,
     addWorker, updateWorker, deleteWorker,
     addShift, updateShift, deleteShift,
-    addAssignment, deleteAssignment,
+    addAssignment, addAssignments, deleteAssignment,
     getAssignmentsFor, eligibleWorkers,
   };
 }
