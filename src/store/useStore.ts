@@ -28,10 +28,13 @@ const SEED_TAGS: Tag[] = [
   { id: 't3', name: 'First Aid', color: '#e0544b' },
 ];
 
+/** Full availability for all 7 days (Mon–Sun), no hour restrictions. */
+const FULL_AVAILABILITY = Array.from({ length: 7 }, () => ({ start: '00:00', end: '23:59' }));
+
 const SEED_WORKERS: Worker[] = [
-  { id: 'w1', name: 'Alice Johnson', role: 'Manager', color: '#4f8ef7', tagIds: ['t1', 't3'], maxShiftsPerWeek: 5 },
-  { id: 'w2', name: 'Bob Smith',     role: 'Staff',   color: '#e0544b', tagIds: ['t2'],        maxShiftsPerWeek: 5 },
-  { id: 'w3', name: 'Carol White',   role: 'Staff',   color: '#34c98b', tagIds: ['t1'],        maxShiftsPerWeek: 4 },
+  { id: 'w1', name: 'Alice Johnson', role: 'Manager', color: '#4f8ef7', tagIds: ['t1', 't3'], maxShiftsPerWeek: 5, availability: FULL_AVAILABILITY },
+  { id: 'w2', name: 'Bob Smith',     role: 'Staff',   color: '#e0544b', tagIds: ['t2'],        maxShiftsPerWeek: 5, availability: FULL_AVAILABILITY },
+  { id: 'w3', name: 'Carol White',   role: 'Staff',   color: '#34c98b', tagIds: ['t1'],        maxShiftsPerWeek: 4, availability: FULL_AVAILABILITY },
 ];
 
 const SEED_SHIFTS: ShiftType[] = [
@@ -63,6 +66,8 @@ export interface Store {
   addAssignment: (data: Omit<Assignment, 'id'>) => void;
   addAssignments: (data: Omit<Assignment, 'id'>[]) => void;
   deleteAssignment: (id: string) => void;
+  /** Remove all assignments whose date falls within the given set of ISO date strings. */
+  deleteAssignmentsForDates: (dates: string[]) => void;
   getAssignmentsFor: (date: string, shiftId: string) => Assignment[];
   /** Workers who have all tags required by the given shift. */
   eligibleWorkers: (shiftId: string) => Worker[];
@@ -75,6 +80,8 @@ function migrateWorker(w: Worker): Worker {
     ...w,
     tagIds: w.tagIds ?? [],
     maxShiftsPerWeek: w.maxShiftsPerWeek ?? 5,
+    // Workers created before availability was added default to fully available
+    availability: w.availability ?? Array.from({ length: 7 }, () => ({ start: '00:00', end: '23:59' })),
   };
 }
 
@@ -160,6 +167,11 @@ export function useStore(): Store {
     setAssignments(prev => prev.filter(a => a.id !== id));
   }, []);
 
+  const deleteAssignmentsForDates = useCallback((dates: string[]) => {
+    const dateSet = new Set(dates);
+    setAssignments(prev => prev.filter(a => !dateSet.has(a.date)));
+  }, []);
+
   const getAssignmentsFor = useCallback(
     (date: string, shiftId: string): Assignment[] =>
       assignments.filter(a => a.date === date && a.shiftId === shiftId),
@@ -182,7 +194,7 @@ export function useStore(): Store {
     addTag, updateTag, deleteTag,
     addWorker, updateWorker, deleteWorker,
     addShift, updateShift, deleteShift,
-    addAssignment, addAssignments, deleteAssignment,
+    addAssignment, addAssignments, deleteAssignment, deleteAssignmentsForDates,
     getAssignmentsFor, eligibleWorkers,
   };
 }

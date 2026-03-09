@@ -1,9 +1,28 @@
 import { useState } from 'react';
-import type { Tag, Worker } from '../types';
+import type { Tag, Worker, DayTimeRange } from '../types';
 import type { Store } from '../store/useStore';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TagBadge } from './TagBadge';
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function makeFullAvailability(): (DayTimeRange | null)[] {
+  return Array.from({ length: 7 }, () => ({ start: '00:00', end: '23:59' }));
+}
+
+function isFullAvailability(availability: (DayTimeRange | null)[]): boolean {
+  return availability.every(
+    a => a !== null && a.start === '00:00' && a.end === '23:59',
+  );
+}
+
+function availabilitySummary(availability: (DayTimeRange | null)[]): string {
+  const available = DAY_NAMES.filter((_, i) => availability[i] !== null);
+  if (available.length === 0) return 'Unavailable all week';
+  if (available.length === 7) return 'All days';
+  return available.join(', ');
+}
 
 interface WorkerFormData {
   name: string;
@@ -11,9 +30,17 @@ interface WorkerFormData {
   color: string;
   tagIds: string[];
   maxShiftsPerWeek: number;
+  availability: (DayTimeRange | null)[];
 }
 
-const EMPTY_FORM: WorkerFormData = { name: '', role: '', color: '#4f8ef7', tagIds: [], maxShiftsPerWeek: 5 };
+const EMPTY_FORM: WorkerFormData = {
+  name: '',
+  role: '',
+  color: '#4f8ef7',
+  tagIds: [],
+  maxShiftsPerWeek: 5,
+  availability: makeFullAvailability(),
+};
 
 const PRESET_COLORS = [
   '#4f8ef7', '#e0544b', '#34c98b', '#f9a825',
@@ -40,7 +67,14 @@ export function WorkersView({ workers, tags, store }: Props) {
 
   function openEdit(w: Worker) {
     setEditing(w);
-    setForm({ name: w.name, role: w.role, color: w.color, tagIds: [...w.tagIds], maxShiftsPerWeek: w.maxShiftsPerWeek });
+    setForm({
+      name: w.name,
+      role: w.role,
+      color: w.color,
+      tagIds: [...w.tagIds],
+      maxShiftsPerWeek: w.maxShiftsPerWeek,
+      availability: w.availability.map(a => (a ? { ...a } : null)),
+    });
     setModalOpen(true);
   }
 
@@ -53,7 +87,29 @@ export function WorkersView({ workers, tags, store }: Props) {
     }));
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function toggleDay(dayIndex: number) {
+    setForm(f => {
+      const availability = f.availability.map(a => (a ? { ...a } : null)) as (DayTimeRange | null)[];
+      availability[dayIndex] =
+        availability[dayIndex] === null
+          ? { start: '09:00', end: '17:00' }
+          : null;
+      return { ...f, availability };
+    });
+  }
+
+  function updateDayHours(dayIndex: number, field: 'start' | 'end', value: string) {
+    setForm(f => {
+      const availability = f.availability.map(a => (a ? { ...a } : null)) as (DayTimeRange | null)[];
+      const current = availability[dayIndex];
+      if (current !== null) {
+        availability[dayIndex] = { ...current, [field]: value };
+      }
+      return { ...f, availability };
+    });
+  }
+
+  function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!form.name.trim()) return;
     if (editing) {
@@ -77,6 +133,7 @@ export function WorkersView({ workers, tags, store }: Props) {
         <div className="card-grid">
           {workers.map(w => {
             const workerTags = tags.filter(t => w.tagIds.includes(t.id));
+            const fullAvail = isFullAvailability(w.availability);
             return (
               <div key={w.id} className="card card--tall" style={{ borderTopColor: w.color }}>
                 <div className="card__avatar" style={{ backgroundColor: w.color }}>
@@ -87,6 +144,11 @@ export function WorkersView({ workers, tags, store }: Props) {
                   <span className="card__sub">
                     {w.role || 'No role'}{' · '}max {w.maxShiftsPerWeek}/wk
                   </span>
+                  {!fullAvail && (
+                    <span className="card__sub card__sub--avail">
+                      {availabilitySummary(w.availability)}
+                    </span>
+                  )}
                   {workerTags.length > 0 && (
                     <div className="card__tags">
                       {workerTags.map(t => <TagBadge key={t.id} tag={t} size="sm" />)}
@@ -169,6 +231,47 @@ export function WorkersView({ workers, tags, store }: Props) {
               onChange={e => setForm(f => ({ ...f, maxShiftsPerWeek: Math.max(1, Number(e.target.value)) }))}
             />
           </label>
+
+          {/* ── Availability ─────────────────────────────────── */}
+          <div className="form__label">
+            Availability
+            <div className="availability-grid">
+              {DAY_NAMES.map((day, i) => {
+                const avail = form.availability[i];
+                const available = avail !== null;
+                return (
+                  <div key={day} className={`availability-row ${available ? '' : 'availability-row--off'}`}>
+                    <label className="availability-day-toggle">
+                      <input
+                        type="checkbox"
+                        checked={available}
+                        onChange={() => toggleDay(i)}
+                      />
+                      <span className="availability-day-name">{day}</span>
+                    </label>
+                    {available && avail && (
+                      <div className="availability-times">
+                        <input
+                          type="time"
+                          className="form__input form__input--time"
+                          value={avail.start}
+                          onChange={e => updateDayHours(i, 'start', e.target.value)}
+                        />
+                        <span className="availability-sep">–</span>
+                        <input
+                          type="time"
+                          className="form__input form__input--time"
+                          value={avail.end}
+                          onChange={e => updateDayHours(i, 'end', e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {tags.length > 0 && (
             <div className="form__label">
               Tags / Qualifications
