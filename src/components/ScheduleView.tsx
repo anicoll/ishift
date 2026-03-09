@@ -48,6 +48,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   });
   const [deleteTarget, setDeleteTarget] = useState<Assignment | null>(null);
   const [clearWeekOpen, setClearWeekOpen] = useState(false);
+  const [copyPrevWeekOpen, setCopyPrevWeekOpen] = useState(false);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
 
@@ -115,6 +116,22 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
     () => store.assignments.filter(a => weekDateStrings.has(a.date)),
     [store.assignments, weekDateStrings],
   );
+
+  // ── Copy previous week ───────────────────────────────────────────────────
+
+  const prevWeekCopyable = useMemo(() => {
+    const prevWeekDays = weekDays(addWeeks(weekStart, -1));
+    const prevWeekDateStrings = new Set(prevWeekDays.map(toISODate));
+    const currentWeekKeys = new Set(
+      store.assignments
+        .filter(a => weekDateStrings.has(a.date))
+        .map(a => `${a.date}:${a.shiftId}:${a.workerId}`),
+    );
+    return store.assignments
+      .filter(a => prevWeekDateStrings.has(a.date))
+      .map(a => ({ ...a, date: toISODate(addWeeks(new Date(a.date), 1)) }))
+      .filter(a => !currentWeekKeys.has(`${a.date}:${a.shiftId}:${a.workerId}`));
+  }, [weekStart, store.assignments, weekDateStrings]);
 
   function runAutoFill() {
     const result = greedyAutoFill(weekStart, shifts, workers, weekAssignments);
@@ -241,6 +258,11 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         {weekAssignments.length > 0 && (
           <button className="btn btn--ghost btn--danger-text" onClick={() => setClearWeekOpen(true)}>
             Clear week
+          </button>
+        )}
+        {prevWeekCopyable.length > 0 && (
+          <button className="btn btn--ghost" onClick={() => setCopyPrevWeekOpen(true)}>
+            Copy prev week
           </button>
         )}
         <button className="btn btn--ghost" onClick={runAutoFill}>⚡ Auto-fill</button>
@@ -558,6 +580,13 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         message={`Remove all ${weekAssignments.length} assignment${weekAssignments.length === 1 ? '' : 's'} for this week?`}
         onConfirm={() => store.deleteAssignmentsForDates(days.map(toISODate))}
         onClose={() => setClearWeekOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={copyPrevWeekOpen}
+        message={`Copy ${prevWeekCopyable.length} assignment${prevWeekCopyable.length === 1 ? '' : 's'} from the previous week?`}
+        onConfirm={() => store.addAssignments(prevWeekCopyable)}
+        onClose={() => setCopyPrevWeekOpen(false)}
       />
 
       <AutoFillModal
