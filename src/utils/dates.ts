@@ -17,9 +17,12 @@ export function weekDays(monday: Date): Date[] {
   });
 }
 
-/** Formats a Date as "YYYY-MM-DD" — used as the storage/lookup key. */
+/** Formats a Date as "YYYY-MM-DD" using local time — used as the storage/lookup key. */
 export function toISODate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /** Formats a Date as "Mon 3", "Tue 4", etc. */

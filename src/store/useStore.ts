@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Tag, Worker, ShiftType, Assignment } from '../types';
+import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday } from '../types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,8 @@ export interface Store {
   workers: Worker[];
   shifts: ShiftType[];
   assignments: Assignment[];
+  bankHolidays: BankHoliday[];
+  workerHolidays: WorkerHoliday[];
   // Tags
   addTag: (data: Omit<Tag, 'id'>) => void;
   updateTag: (id: string, data: Partial<Omit<Tag, 'id'>>) => void;
@@ -73,6 +75,14 @@ export interface Store {
   getAssignmentsFor: (date: string, shiftId: string) => Assignment[];
   /** Workers who have all tags required by the given shift. */
   eligibleWorkers: (shiftId: string) => Worker[];
+  // Bank Holidays
+  addBankHoliday: (data: Omit<BankHoliday, 'id'>) => void;
+  deleteBankHoliday: (id: string) => void;
+  // Worker Holidays
+  addWorkerHoliday: (data: Omit<WorkerHoliday, 'id'>) => void;
+  deleteWorkerHoliday: (id: string) => void;
+  /** Returns true if the worker is on holiday on the given date. */
+  workerOnHoliday: (workerId: string, date: string) => boolean;
 }
 
 // ── migration helpers (fill in fields added after initial release) ────────────
@@ -106,11 +116,15 @@ export function useStore(): Store {
     load('ishift_shifts', SEED_SHIFTS).map(migrateShift),
   );
   const [assignments, setAssignments] = useState<Assignment[]>(() => load('ishift_assignments', []));
+  const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>(() => load('ishift_bank_holidays', []));
+  const [workerHolidays, setWorkerHolidays] = useState<WorkerHoliday[]>(() => load('ishift_worker_holidays', []));
 
   useEffect(() => { persist('ishift_tags', tags); }, [tags]);
   useEffect(() => { persist('ishift_workers', workers); }, [workers]);
   useEffect(() => { persist('ishift_shifts', shifts); }, [shifts]);
   useEffect(() => { persist('ishift_assignments', assignments); }, [assignments]);
+  useEffect(() => { persist('ishift_bank_holidays', bankHolidays); }, [bankHolidays]);
+  useEffect(() => { persist('ishift_worker_holidays', workerHolidays); }, [workerHolidays]);
 
   // Tags
   const addTag = useCallback((data: Omit<Tag, 'id'>) => {
@@ -198,12 +212,38 @@ export function useStore(): Store {
     [shifts, workers],
   );
 
+  // Bank Holidays
+  const addBankHoliday = useCallback((data: Omit<BankHoliday, 'id'>) => {
+    setBankHolidays(prev => [...prev, { id: uid(), ...data }]);
+  }, []);
+
+  const deleteBankHoliday = useCallback((id: string) => {
+    setBankHolidays(prev => prev.filter(h => h.id !== id));
+  }, []);
+
+  // Worker Holidays
+  const addWorkerHoliday = useCallback((data: Omit<WorkerHoliday, 'id'>) => {
+    setWorkerHolidays(prev => [...prev, { id: uid(), ...data }]);
+  }, []);
+
+  const deleteWorkerHoliday = useCallback((id: string) => {
+    setWorkerHolidays(prev => prev.filter(h => h.id !== id));
+  }, []);
+
+  const workerOnHoliday = useCallback((workerId: string, date: string): boolean => {
+    return workerHolidays.some(
+      h => h.workerId === workerId && h.startDate <= date && h.endDate >= date,
+    );
+  }, [workerHolidays]);
+
   return {
-    tags, workers, shifts, assignments,
+    tags, workers, shifts, assignments, bankHolidays, workerHolidays,
     addTag, updateTag, deleteTag,
     addWorker, updateWorker, deleteWorker,
     addShift, updateShift, deleteShift, reorderShifts,
     addAssignment, addAssignments, deleteAssignment, deleteAssignmentsForDates,
     getAssignmentsFor, eligibleWorkers,
+    addBankHoliday, deleteBankHoliday,
+    addWorkerHoliday, deleteWorkerHoliday, workerOnHoliday,
   };
 }

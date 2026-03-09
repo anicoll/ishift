@@ -43,6 +43,8 @@ export default function App() {
             workers={store.workers}
             shifts={store.shifts}
             tags={store.tags}
+            bankHolidays={store.bankHolidays}
+            workerHolidays={store.workerHolidays}
             store={store}
           />
         )}
@@ -50,6 +52,7 @@ export default function App() {
           <WorkersView
             workers={store.workers}
             tags={store.tags}
+            workerHolidays={store.workerHolidays}
             store={store}
           />
         )}

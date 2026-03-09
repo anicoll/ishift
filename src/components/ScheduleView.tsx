@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { Tag, Worker, ShiftType, Assignment } from '../types';
+import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday } from '../types';
 import type { Store } from '../store/useStore';
 import {
   startOfWeek, weekDays, toISODate,
@@ -12,6 +12,7 @@ import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AutoFillModal } from './AutoFillModal';
 import { ExportModal } from './ExportModal';
+import { BankHolidayModal } from './BankHolidayModal';
 
 // 0 = Monday … 6 = Sunday
 const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -20,7 +21,9 @@ interface Props {
   workers: Worker[];
   shifts: ShiftType[];
   tags: Tag[];
-  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments' | 'reorderShifts'>;
+  bankHolidays: BankHoliday[];
+  workerHolidays: WorkerHoliday[];
+  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments' | 'reorderShifts' | 'addBankHoliday' | 'deleteBankHoliday'>;
 }
 
 interface AssignFormData {
@@ -37,7 +40,7 @@ interface DragState {
   assignmentId?: string;
 }
 
-export function ScheduleView({ workers, shifts, tags, store }: Props) {
+export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolidays, store }: Props) {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [modalOpen, setModalOpen] = useState(false);
   const [prefill, setPrefill] = useState<{ date: string; shiftId: string } | null>(null);
@@ -53,6 +56,17 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [bankHolidayOpen, setBankHolidayOpen] = useState(false);
+
+  const bankHolidayDateSet = useMemo(
+    () => new Set(bankHolidays.map(h => h.date)),
+    [bankHolidays],
+  );
+
+  const bankHolidayByDate = useMemo(
+    () => new Map(bankHolidays.map(h => [h.date, h])),
+    [bankHolidays],
+  );
 
   // ── Drag-and-drop state ──────────────────────────────────────────────────
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -140,7 +154,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
   }, [weekStart, store.assignments, weekDateStrings]);
 
   function runAutoFill() {
-    const result = greedyAutoFill(weekStart, shifts, workers, weekAssignments);
+    const result = greedyAutoFill(weekStart, shifts, workers, weekAssignments, bankHolidayDateSet, workerHolidays);
     setAutoFillResult(result);
     setAutoFillOpen(true);
   }
@@ -196,6 +210,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
     const set = new Set<string>();
     for (const day of days) {
       const dateStr = toISODate(day);
+      if (bankHolidayDateSet.has(dateStr)) continue;
       for (const shift of shifts) {
         if (!shift.requiredTagIds.every(tid => worker.tagIds.includes(tid))) continue;
         const alreadyHere = store.assignments.some(
@@ -289,6 +304,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
             Copy prev week
           </button>
         )}
+        <button className="btn btn--ghost" onClick={() => setBankHolidayOpen(true)}>🗓 Holidays</button>
         <button className="btn btn--ghost" onClick={runAutoFill}>⚡ Auto-fill</button>
         <button className="btn btn--ghost" onClick={() => setExportOpen(true)}>↓ Export</button>
         <button className="btn btn--primary" onClick={() => openAssign()}>+ Assign</button>
@@ -302,14 +318,25 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
               <thead>
                 <tr>
                   <th className="schedule-table__corner">Shift</th>
-                  {days.map(d => (
-                    <th
-                      key={d.toISOString()}
-                      className={`schedule-table__day-head ${isToday(d) ? 'schedule-table__day-head--today' : ''}`}
-                    >
-                      {formatDayHeader(d)}
-                    </th>
-                  ))}
+                  {days.map(d => {
+                    const dateStr = toISODate(d);
+                    const holiday = bankHolidayByDate.get(dateStr);
+                    return (
+                      <th
+                        key={d.toISOString()}
+                        className={[
+                          'schedule-table__day-head',
+                          isToday(d) ? 'schedule-table__day-head--today' : '',
+                          holiday ? 'schedule-table__day-head--holiday' : '',
+                        ].filter(Boolean).join(' ')}
+                      >
+                        {formatDayHeader(d)}
+                        {holiday && (
+                          <span className="day-head-holiday-label">{holiday.name}</span>
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -343,6 +370,7 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
                       </td>
                       {days.map(day => {
                         const dateStr = toISODate(day);
+                        const isHoliday = bankHolidayDateSet.has(dateStr);
                         const cellKey = `${dateStr}:${shift.id}`;
                         const isValid = drag ? validDrops.has(cellKey) : null;
                         const isHovered = dropHover === cellKey;
@@ -354,7 +382,8 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
 
                         let cellClass = 'schedule-table__cell';
                         if (isToday(day)) cellClass += ' schedule-table__cell--today';
-                        if (drag) {
+                        if (isHoliday) cellClass += ' schedule-table__cell--holiday';
+                        else if (drag) {
                           if (isHovered) cellClass += ' cell--drop-hover';
                           else if (isValid) cellClass += ' cell--drop-valid';
                           else cellClass += ' cell--drop-invalid';
@@ -364,38 +393,44 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
                           <td
                             key={dateStr}
                             className={cellClass}
-                            onClick={() => !drag && openAssign(dateStr, shift.id)}
-                            onDragOver={e => handleCellDragOver(e, cellKey)}
+                            onClick={() => !drag && !isHoliday && openAssign(dateStr, shift.id)}
+                            onDragOver={e => !isHoliday && handleCellDragOver(e, cellKey)}
                             onDragLeave={e => {
                               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                                 setDropHover(null);
                               }
                             }}
-                            onDrop={e => handleCellDrop(e, dateStr, shift.id)}
+                            onDrop={e => !isHoliday && handleCellDrop(e, dateStr, shift.id)}
                           >
                             <div className="cell-content">
-                              {cellWorkers.map(({ assignment, worker }) => (
-                                <span
-                                  key={assignment.id}
-                                  draggable
-                                  className={`badge-drag-wrapper${drag?.assignmentId === assignment.id ? ' badge-drag-wrapper--dragging' : ''}`}
-                                  onClick={e => e.stopPropagation()}
-                                  onDragStart={(e) => {
-                                    e.stopPropagation();
-                                    e.dataTransfer.effectAllowed = 'move';
-                                    setDrag({ type: 'move', workerId: worker.id, assignmentId: assignment.id });
-                                  }}
-                                  onDragEnd={stopDrag}
-                                >
-                                  <WorkerBadge
-                                    worker={worker}
-                                    onRemove={drag ? undefined : () => setDeleteTarget(assignment)}
-                                  />
-                                </span>
-                              ))}
-                              {!drag && <span className="cell-add-hint">+</span>}
-                              {drag && isValid && !isHovered && <span className="cell-drop-hint">+</span>}
-                              {drag && isHovered && <span className="cell-drop-hint cell-drop-hint--active">Drop</span>}
+                              {isHoliday ? (
+                                <span className="cell-holiday-overlay">Holiday</span>
+                              ) : (
+                                <>
+                                  {cellWorkers.map(({ assignment, worker }) => (
+                                    <span
+                                      key={assignment.id}
+                                      draggable
+                                      className={`badge-drag-wrapper${drag?.assignmentId === assignment.id ? ' badge-drag-wrapper--dragging' : ''}`}
+                                      onClick={e => e.stopPropagation()}
+                                      onDragStart={(e) => {
+                                        e.stopPropagation();
+                                        e.dataTransfer.effectAllowed = 'move';
+                                        setDrag({ type: 'move', workerId: worker.id, assignmentId: assignment.id });
+                                      }}
+                                      onDragEnd={stopDrag}
+                                    >
+                                      <WorkerBadge
+                                        worker={worker}
+                                        onRemove={drag ? undefined : () => setDeleteTarget(assignment)}
+                                      />
+                                    </span>
+                                  ))}
+                                  {!drag && <span className="cell-add-hint">+</span>}
+                                  {drag && isValid && !isHovered && <span className="cell-drop-hint">+</span>}
+                                  {drag && isHovered && <span className="cell-drop-hint cell-drop-hint--active">Drop</span>}
+                                </>
+                              )}
                             </div>
                           </td>
                         );
@@ -645,6 +680,13 @@ export function ScheduleView({ workers, shifts, tags, store }: Props) {
         shifts={shifts}
         tags={tags}
         onClose={() => setExportOpen(false)}
+      />
+
+      <BankHolidayModal
+        open={bankHolidayOpen}
+        bankHolidays={bankHolidays}
+        store={store}
+        onClose={() => setBankHolidayOpen(false)}
       />
     </div>
   );

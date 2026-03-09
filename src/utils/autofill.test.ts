@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { greedyAutoFill, dayOfWeekIndex, workerAvailableForShift, availabilityCoversShift } from './autofill';
-import type { Worker, ShiftType, Assignment } from '../types';
+import type { Worker, ShiftType, Assignment, WorkerHoliday } from '../types';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,8 +30,19 @@ function makeShift(overrides: Partial<ShiftType> = {}): ShiftType {
   };
 }
 
-/** Monday of 2024-W01 (1 Jan 2024 is a Monday). */
-const WEEK_MON = new Date('2024-01-01T00:00:00Z');
+/** Monday of 2024-W01 (1 Jan 2024 is a Monday) — constructed in local time. */
+const WEEK_MON = new Date(2024, 0, 1, 0, 0, 0);
+
+function makeWorkerHoliday(overrides: Partial<WorkerHoliday> = {}): WorkerHoliday {
+  return {
+    id: 'h1',
+    workerId: 'w1',
+    startDate: '2024-01-01',
+    endDate: '2024-01-07',
+    note: '',
+    ...overrides,
+  };
+}
 
 // ── dayOfWeekIndex ────────────────────────────────────────────────────────────
 
@@ -221,5 +232,190 @@ describe('greedyAutoFill', () => {
     expect(assignedDates).not.toContain('2024-01-06'); // Sat
     expect(assignedDates).not.toContain('2024-01-07'); // Sun
     expect(result.assignments).toHaveLength(3);
+  });
+});
+
+// ── greedyAutoFill — bank holidays ───────────────────────────────────────────
+
+describe('greedyAutoFill — bank holidays', () => {
+  it('skips a single bank holiday date', () => {
+    const worker = makeWorker({ maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const bankHolidays = new Set(['2024-01-01']); // Monday
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], bankHolidays);
+
+    expect(result.assignments).toHaveLength(6); // 7 days − 1 holiday
+    expect(result.assignments.find(a => a.date === '2024-01-01')).toBeUndefined();
+  });
+
+  it('skips multiple bank holiday dates', () => {
+    const worker = makeWorker({ maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const bankHolidays = new Set(['2024-01-01', '2024-01-03', '2024-01-05']); // Mon, Wed, Fri
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], bankHolidays);
+
+    expect(result.assignments).toHaveLength(4);
+    const dates = result.assignments.map(a => a.date);
+    expect(dates).not.toContain('2024-01-01');
+    expect(dates).not.toContain('2024-01-03');
+    expect(dates).not.toContain('2024-01-05');
+    expect(dates).toContain('2024-01-02'); // Tue
+    expect(dates).toContain('2024-01-04'); // Thu
+    expect(dates).toContain('2024-01-06'); // Sat
+    expect(dates).toContain('2024-01-07'); // Sun
+  });
+
+  it('produces no slots for bank holiday dates', () => {
+    const worker = makeWorker({ maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const bankHolidays = new Set(['2024-01-01', '2024-01-02']);
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], bankHolidays);
+
+    const slotDates = result.slots.map(s => s.date);
+    expect(slotDates).not.toContain('2024-01-01');
+    expect(slotDates).not.toContain('2024-01-02');
+  });
+
+  it('still fills non-holiday days when some days are holidays', () => {
+    const worker = makeWorker({ maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const bankHolidays = new Set(['2024-01-07']); // Only Sunday is a holiday
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], bankHolidays);
+
+    expect(result.assignments).toHaveLength(6);
+    expect(result.assignments.every(a => a.date !== '2024-01-07')).toBe(true);
+  });
+
+  it('returns empty result when every day is a bank holiday', () => {
+    const worker = makeWorker({ maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const allDays = new Set([
+      '2024-01-01', '2024-01-02', '2024-01-03',
+      '2024-01-04', '2024-01-05', '2024-01-06', '2024-01-07',
+    ]);
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], allDays);
+
+    expect(result.assignments).toHaveLength(0);
+    expect(result.slots).toHaveLength(0);
+  });
+});
+
+// ── greedyAutoFill — worker holidays ─────────────────────────────────────────
+
+describe('greedyAutoFill — worker holidays', () => {
+  it('excludes a worker on holiday from assignments on those dates', () => {
+    const worker = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const holidays = [makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-01', endDate: '2024-01-03' })];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], new Set(), holidays);
+
+    // Mon–Wed excluded; Thu–Sun assigned
+    expect(result.assignments).toHaveLength(4);
+    const dates = result.assignments.map(a => a.date);
+    expect(dates).not.toContain('2024-01-01');
+    expect(dates).not.toContain('2024-01-02');
+    expect(dates).not.toContain('2024-01-03');
+    expect(dates).toContain('2024-01-04');
+  });
+
+  it('reports unfilled slots for days where all workers are on holiday', () => {
+    const worker = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    // Worker on holiday for entire week
+    const holidays = [makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-01', endDate: '2024-01-07' })];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], new Set(), holidays);
+
+    expect(result.assignments).toHaveLength(0);
+    expect(result.slots.every(s => s.unfilledCount > 0)).toBe(true);
+  });
+
+  it('assigns other workers when one is on holiday', () => {
+    const w1 = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const w2 = makeWorker({ id: 'w2', maxShiftsPerWeek: 7 });
+    const shift = makeShift({ minWorkers: 1 });
+    // w1 on holiday for the whole week
+    const holidays = [makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-01', endDate: '2024-01-07' })];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [w1, w2], [], new Set(), holidays);
+
+    expect(result.assignments).toHaveLength(7);
+    result.assignments.forEach(a => expect(a.workerId).toBe('w2'));
+  });
+
+  it('respects single-day worker holiday', () => {
+    const worker = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    // Holiday on Wednesday only
+    const holidays = [makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-03', endDate: '2024-01-03' })];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], new Set(), holidays);
+
+    expect(result.assignments).toHaveLength(6);
+    expect(result.assignments.find(a => a.date === '2024-01-03')).toBeUndefined();
+  });
+
+  it('worker not on holiday on dates outside the range is still assigned', () => {
+    const worker = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const shift  = makeShift({ minWorkers: 1 });
+    const holidays = [makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-04', endDate: '2024-01-06' })];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [worker], [], new Set(), holidays);
+
+    expect(result.assignments).toHaveLength(4); // Mon, Tue, Wed, Sun
+    const dates = result.assignments.map(a => a.date);
+    expect(dates).toContain('2024-01-01'); // Mon
+    expect(dates).toContain('2024-01-02'); // Tue
+    expect(dates).toContain('2024-01-03'); // Wed
+    expect(dates).toContain('2024-01-07'); // Sun
+  });
+
+  it('holiday for one worker does not affect other workers', () => {
+    const w1 = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const w2 = makeWorker({ id: 'w2', maxShiftsPerWeek: 7 });
+    const shift = makeShift({ minWorkers: 2 }); // needs 2 workers
+    // w1 on holiday Monday only
+    const holidays = [makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-01', endDate: '2024-01-01' })];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [w1, w2], [], new Set(), holidays);
+
+    // Monday: only w2 can be assigned (1 of 2 needed → unfilledCount 1)
+    const mondaySlot = result.slots.find(s => s.date === '2024-01-01');
+    expect(mondaySlot).toBeDefined();
+    expect(mondaySlot!.toAssign.map(w => w.id)).not.toContain('w1');
+    expect(mondaySlot!.toAssign.map(w => w.id)).toContain('w2');
+  });
+});
+
+// ── greedyAutoFill — bank holidays + worker holidays combined ─────────────────
+
+describe('greedyAutoFill — bank holidays and worker holidays combined', () => {
+  it('respects both bank holidays and worker holidays simultaneously', () => {
+    const w1 = makeWorker({ id: 'w1', maxShiftsPerWeek: 7 });
+    const w2 = makeWorker({ id: 'w2', maxShiftsPerWeek: 7 });
+    const shift = makeShift({ minWorkers: 1 });
+
+    const bankHolidays = new Set(['2024-01-01']); // Monday is a public holiday
+    const workerHolidays = [
+      makeWorkerHoliday({ workerId: 'w1', startDate: '2024-01-02', endDate: '2024-01-03' }), // w1 off Tue–Wed
+    ];
+
+    const result = greedyAutoFill(WEEK_MON, [shift], [w1, w2], [], bankHolidays, workerHolidays);
+
+    const dates = result.assignments.map(a => a.date);
+    expect(dates).not.toContain('2024-01-01'); // bank holiday — no assignments at all
+    // Tue and Wed: only w2 eligible (w1 on holiday)
+    const tue = result.assignments.find(a => a.date === '2024-01-02');
+    const wed = result.assignments.find(a => a.date === '2024-01-03');
+    expect(tue?.workerId).toBe('w2');
+    expect(wed?.workerId).toBe('w2');
+    // Thu–Sun: both workers eligible
+    expect(result.assignments.filter(a => a.date >= '2024-01-04')).toHaveLength(4);
   });
 });
