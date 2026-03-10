@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { Tag, ShiftType } from '../types';
-import type { Store } from '../store/useStore';
-import { Modal } from './Modal';
-import { ConfirmDialog } from './ConfirmDialog';
-import { TagBadge } from './TagBadge';
+import type { Tag, ShiftType } from '../../types';
+import type { Store } from '../../store/useStore';
+import { Modal } from '../../components/Modal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { TagBadge } from '../../components/TagBadge';
 
 interface ShiftFormData {
   name: string;

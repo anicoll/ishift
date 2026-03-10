@@ -1,7 +1,7 @@
-import type { Worker, ShiftType } from '../types';
-import type { AutoFillResult } from '../utils/autofill';
-import { Modal } from './Modal';
-import { WorkerBadge } from './WorkerBadge';
+import type { Worker, ShiftType } from '../../types';
+import type { AutoFillResult } from '../../utils/autofill';
+import { Modal } from '../../components/Modal';
+import { WorkerBadge } from '../../components/WorkerBadge';
 
 interface Props {
   open: boolean;
