@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday } from '../types';
+import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday, SchedulePeriodPreset } from '../types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,13 @@ export interface Store {
   deleteWorkerHoliday: (id: string) => void;
   /** Returns true if the worker is on holiday on the given date. */
   workerOnHoliday: (workerId: string, date: string) => boolean;
+  // Schedule period
+  schedulePeriod: SchedulePeriodPreset;
+  setSchedulePeriod: (period: SchedulePeriodPreset) => void;
+  /** Used when schedulePeriod === 'custom'. "YYYY-MM-DD" strings. */
+  customPeriodStart: string;
+  customPeriodEnd: string;
+  setCustomPeriod: (start: string, end: string) => void;
 }
 
 // ── worker holiday expiry ─────────────────────────────────────────────────────
@@ -136,6 +143,27 @@ export function useStore(): Store {
   );
   const [assignments, setAssignments] = useState<Assignment[]>(() => load('ishift_assignments', []));
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>(() => load('ishift_bank_holidays', []));
+  const [schedulePeriod, setSchedulePeriodState] = useState<SchedulePeriodPreset>(
+    () => load<SchedulePeriodPreset>('ishift_schedule_period', 'week'),
+  );
+
+  const todayISO = (() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  })();
+  const nextWeekISO = (() => {
+    const t = new Date();
+    t.setDate(t.getDate() + 6);
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  })();
+
+  const [customPeriodStart, setCustomPeriodStart] = useState<string>(
+    () => load('ishift_custom_period_start', todayISO),
+  );
+  const [customPeriodEnd, setCustomPeriodEnd] = useState<string>(
+    () => load('ishift_custom_period_end', nextWeekISO),
+  );
+
   const [workerHolidays, setWorkerHolidays] = useState<WorkerHoliday[]>(() => {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -148,6 +176,18 @@ export function useStore(): Store {
   useEffect(() => { persist('ishift_assignments', assignments); }, [assignments]);
   useEffect(() => { persist('ishift_bank_holidays', bankHolidays); }, [bankHolidays]);
   useEffect(() => { persist('ishift_worker_holidays', workerHolidays); }, [workerHolidays]);
+  useEffect(() => { persist('ishift_schedule_period', schedulePeriod); }, [schedulePeriod]);
+  useEffect(() => { persist('ishift_custom_period_start', customPeriodStart); }, [customPeriodStart]);
+  useEffect(() => { persist('ishift_custom_period_end', customPeriodEnd); }, [customPeriodEnd]);
+
+  const setSchedulePeriod = useCallback((period: SchedulePeriodPreset) => {
+    setSchedulePeriodState(period);
+  }, []);
+
+  const setCustomPeriod = useCallback((start: string, end: string) => {
+    setCustomPeriodStart(start);
+    setCustomPeriodEnd(end);
+  }, []);
 
   // Tags
   const addTag = useCallback((data: Omit<Tag, 'id'>) => {
@@ -268,5 +308,7 @@ export function useStore(): Store {
     getAssignmentsFor, eligibleWorkers,
     addBankHoliday, deleteBankHoliday,
     addWorkerHoliday, deleteWorkerHoliday, workerOnHoliday,
+    schedulePeriod, setSchedulePeriod,
+    customPeriodStart, customPeriodEnd, setCustomPeriod,
   };
 }

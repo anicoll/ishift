@@ -1,5 +1,5 @@
 import type { Worker, ShiftType, Assignment, DayTimeRange, WorkerHoliday } from '../types';
-import { weekDays, toISODate } from './dates';
+import { toISODate } from './dates';
 
 export interface AutoFillSlot {
   date: string;
@@ -75,16 +75,17 @@ export function workerAvailableForShift(
  *  4. Assign until minWorkers is reached or candidates are exhausted.
  */
 export function greedyAutoFill(
-  weekStart: Date,
+  days: Date[],
   shifts: ShiftType[],
   workers: Worker[],
   existingAssignments: Assignment[],
   bankHolidayDates: Set<string> = new Set(),
   workerHolidays: WorkerHoliday[] = [],
 ): AutoFillResult {
-  const days = weekDays(weekStart);
+  // Scale maxShiftsPerWeek proportionally to the period length
+  const periodWeeks = Math.max(1, days.length / 7);
 
-  // Map workerId → number of assignments already in this week (existing + newly planned)
+  // Map workerId → number of assignments already in this period (existing + newly planned)
   const weekCount = new Map<string, number>();
   workers.forEach(w => weekCount.set(w.id, 0));
   existingAssignments.forEach(a => {
@@ -149,7 +150,7 @@ export function greedyAutoFill(
   for (const slot of slots) {
     const candidates = slot.eligible
       .filter(w => !slot.alreadyAssignedIds.has(w.id))
-      .filter(w => (weekCount.get(w.id) ?? 0) < (w.maxShiftsPerWeek ?? 5))
+      .filter(w => (weekCount.get(w.id) ?? 0) < Math.round((w.maxShiftsPerWeek ?? 5) * periodWeeks))
       .sort((a, b) => (weekCount.get(a.id) ?? 0) - (weekCount.get(b.id) ?? 0));
 
     const toAssign: Worker[] = [];

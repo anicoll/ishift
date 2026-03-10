@@ -59,3 +59,5 @@ export interface WorkerHoliday {
 }
 
 export type View = 'schedule' | 'workers' | 'shifts' | 'tags';
+
+export type SchedulePeriodPreset = 'week' | 'fortnight' | 'month' | 'custom';

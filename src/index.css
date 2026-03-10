@@ -63,6 +63,24 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
 
 .week-label { font-size: 16px; font-weight: 600; min-width: 200px; text-align: center; }
 
+/* ── Period selector ─────────────────────────────────────────────────────── */
+.period-selector {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.period-btn {
+  padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted);
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.period-btn:hover { background: var(--bg); color: var(--text); }
+.period-btn--active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.period-custom-range {
+  display: flex; align-items: center; gap: 6px; margin-left: 8px;
+}
+.period-custom-range .form__input--date { padding: 4px 8px; font-size: 13px; width: auto; }
+.period-custom-range__sep { color: var(--text-muted); font-size: 13px; }
+
 .empty-hint {
   padding: 40px; text-align: center;
   color: var(--text-muted); font-size: 15px;
@@ -462,6 +480,73 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
   display: flex; gap: 16px; align-items: flex-start;
 }
 .schedule-main { flex: 1; min-width: 0; }
+
+/* Wide layout (fortnight / month / long custom): sidebar moves above the table */
+.schedule-layout--wide {
+  flex-direction: column;
+  gap: 12px;
+  /* Override flex-start: in column-flex this controls horizontal axis.
+     stretch forces schedule-main to fill the container width so the
+     inner overflow-x: auto wrapper has a bounded width to overflow against. */
+  align-items: stretch;
+}
+
+/* Table must not be constrained to wrapper width — let it grow so the
+   wrapper's overflow-x: auto produces a real scrollbar. */
+.schedule-layout--wide .schedule-table { width: auto; }
+
+/* Sidebar: two-row layout.
+   Row 1 = [Workers label] [TAG grows] [DAY compact] [TIME compact]
+   Row 2 = worker chips (full-width, wrapping) */
+.schedule-layout--wide .workers-sidebar {
+  order: -1;
+  width: 100%;
+  position: static;
+  flex-direction: row;
+  flex-wrap: wrap;          /* row 2 (chips) wraps onto next line */
+  align-items: flex-start;
+  max-height: none;
+  overflow: visible;
+}
+
+.schedule-layout--wide .workers-sidebar__header {
+  position: static;
+  border-bottom: none; border-right: 2px solid var(--border);
+  flex-direction: column; justify-content: space-between;
+  flex: 0 0 auto; min-width: 80px; padding: 10px 12px; align-self: stretch;
+}
+
+/* Tags: grows to fill available row space; tags wrap freely within */
+.schedule-layout--wide .sidebar-section--tags {
+  flex: 1 1 180px;
+  border-bottom: none; border-right: 2px solid var(--border);
+  overflow-y: auto; max-height: 120px;
+  padding: 8px 12px;
+}
+
+/* Day / Time: compact, don't grow */
+.schedule-layout--wide .sidebar-section--days,
+.schedule-layout--wide .sidebar-section--time {
+  flex: 0 0 auto;
+  border-bottom: none; border-right: 2px solid var(--border);
+  padding: 8px 12px;
+}
+
+.schedule-layout--wide .sidebar-section--time {
+  border-right: none;
+}
+
+/* Chips: full-width second row */
+.schedule-layout--wide .workers-sidebar__chips {
+  flex: 0 0 100%;
+  flex-direction: row; flex-wrap: wrap;
+  overflow-y: auto; max-height: 90px;
+  gap: 4px; padding: 8px 12px;
+  border-top: 2px solid var(--border);
+}
+
+.schedule-layout--wide .worker-chip--block { width: auto; flex-shrink: 0; }
+.schedule-layout--wide .workers-sidebar__hint { display: none; }
 
 /* ── Workers sidebar ─────────────────────────────────────────────────────── */
 .workers-sidebar {
