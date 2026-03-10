@@ -85,6 +85,25 @@ export interface Store {
   workerOnHoliday: (workerId: string, date: string) => boolean;
 }
 
+// ── worker holiday expiry ─────────────────────────────────────────────────────
+
+const WORKER_HOLIDAY_EXPIRY_DAYS = 60;
+
+/**
+ * Returns true when a worker holiday ended more than WORKER_HOLIDAY_EXPIRY_DAYS
+ * days ago relative to `todayStr` (a "YYYY-MM-DD" local-date string).
+ */
+export function isWorkerHolidayExpired(h: WorkerHoliday, todayStr: string): boolean {
+  // Subtract expiry days from today to get the cutoff date string
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const cutoff = new Date(y, m - 1, d);
+  cutoff.setDate(cutoff.getDate() - WORKER_HOLIDAY_EXPIRY_DAYS);
+  const cy = cutoff.getFullYear();
+  const cm = String(cutoff.getMonth() + 1).padStart(2, '0');
+  const cd = String(cutoff.getDate()).padStart(2, '0');
+  return h.endDate < `${cy}-${cm}-${cd}`;
+}
+
 // ── migration helpers (fill in fields added after initial release) ────────────
 
 function migrateWorker(w: Worker): Worker {
@@ -117,7 +136,11 @@ export function useStore(): Store {
   );
   const [assignments, setAssignments] = useState<Assignment[]>(() => load('ishift_assignments', []));
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>(() => load('ishift_bank_holidays', []));
-  const [workerHolidays, setWorkerHolidays] = useState<WorkerHoliday[]>(() => load('ishift_worker_holidays', []));
+  const [workerHolidays, setWorkerHolidays] = useState<WorkerHoliday[]>(() => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return load<WorkerHoliday[]>('ishift_worker_holidays', []).filter(h => !isWorkerHolidayExpired(h, todayStr));
+  });
 
   useEffect(() => { persist('ishift_tags', tags); }, [tags]);
   useEffect(() => { persist('ishift_workers', workers); }, [workers]);
