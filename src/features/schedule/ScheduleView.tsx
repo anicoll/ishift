@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
-import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday } from '../../types';
+import { useState, useMemo, useEffect } from 'react';
+import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday, SchedulePeriodPreset } from '../../types';
 import type { Store } from '../../store/useStore';
 import {
-  startOfWeek, weekDays, toISODate,
-  formatDayHeader, formatWeekRange, isToday, addWeeks,
+  startOfPeriod, periodDays, toISODate,
+  formatDayHeader, formatPeriodRange, isToday, addPeriod,
 } from '../../utils/dates';
 import { greedyAutoFill, type AutoFillResult } from '../../utils/autofill';
 import { WorkerBadge } from '../../components/WorkerBadge';
@@ -17,13 +17,26 @@ import { BankHolidayModal } from './BankHolidayModal';
 // 0 = Monday … 6 = Sunday
 const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
+const PERIOD_LABELS: Record<SchedulePeriodPreset, string> = {
+  week: 'Week',
+  fortnight: 'Fortnight',
+  month: 'Month',
+  custom: 'Custom',
+};
+
 interface Props {
   workers: Worker[];
   shifts: ShiftType[];
   tags: Tag[];
   bankHolidays: BankHoliday[];
   workerHolidays: WorkerHoliday[];
-  store: Pick<Store, 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates' | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments' | 'reorderShifts' | 'addBankHoliday' | 'deleteBankHoliday'>;
+  store: Pick<Store,
+    | 'addAssignment' | 'addAssignments' | 'deleteAssignment' | 'deleteAssignmentsForDates'
+    | 'getAssignmentsFor' | 'eligibleWorkers' | 'assignments' | 'reorderShifts'
+    | 'addBankHoliday' | 'deleteBankHoliday'
+    | 'schedulePeriod' | 'setSchedulePeriod'
+    | 'customPeriodStart' | 'customPeriodEnd' | 'setCustomPeriod'
+  >;
 }
 
 interface AssignFormData {
@@ -36,12 +49,38 @@ interface AssignFormData {
 interface DragState {
   type: 'new' | 'move';
   workerId: string;
-  /** ID of the assignment being moved (only set when type === 'move'). */
   assignmentId?: string;
 }
 
 export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolidays, store }: Props) {
-  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const { schedulePeriod, setSchedulePeriod, customPeriodStart, customPeriodEnd, setCustomPeriod } = store;
+
+  // ── Period navigation state (not used for 'custom') ──────────────────────
+  const [periodStart, setPeriodStart] = useState<Date>(() =>
+    schedulePeriod === 'custom' ? new Date() : startOfPeriod(new Date(), schedulePeriod),
+  );
+
+  // Reset navigation whenever the preset changes
+  useEffect(() => {
+    if (schedulePeriod !== 'custom') {
+      setPeriodStart(startOfPeriod(new Date(), schedulePeriod));
+    }
+  }, [schedulePeriod]);
+
+  // ── Days in the current view ─────────────────────────────────────────────
+  const days = useMemo<Date[]>(() => {
+    if (schedulePeriod === 'custom') {
+      if (!customPeriodStart || !customPeriodEnd) return [];
+      return periodDays(
+        new Date(customPeriodStart + 'T00:00:00'),
+        'custom',
+        new Date(customPeriodEnd + 'T00:00:00'),
+      );
+    }
+    return periodDays(periodStart, schedulePeriod);
+  }, [schedulePeriod, periodStart, customPeriodStart, customPeriodEnd]);
+
+  // ── Modal / confirm state ─────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false);
   const [prefill, setPrefill] = useState<{ date: string; shiftId: string } | null>(null);
   const [form, setForm] = useState<AssignFormData>({
@@ -51,8 +90,8 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
     notes: '',
   });
   const [deleteTarget, setDeleteTarget] = useState<Assignment | null>(null);
-  const [clearWeekOpen, setClearWeekOpen] = useState(false);
-  const [copyPrevWeekOpen, setCopyPrevWeekOpen] = useState(false);
+  const [clearPeriodOpen, setClearPeriodOpen] = useState(false);
+  const [copyPrevOpen, setCopyPrevOpen] = useState(false);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillResult, setAutoFillResult] = useState<AutoFillResult | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -70,7 +109,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
 
   // ── Drag-and-drop state ──────────────────────────────────────────────────
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [dropHover, setDropHover] = useState<string | null>(null); // "date:shiftId"
+  const [dropHover, setDropHover] = useState<string | null>(null);
 
   // ── Row-reorder drag state ───────────────────────────────────────────────
   const [rowDragIndex, setRowDragIndex] = useState<number | null>(null);
@@ -80,8 +119,6 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
   const [filterTagIds, setFilterTagIds] = useState<string[]>([]);
   const [filterDayIndex, setFilterDayIndex] = useState<number | null>(null);
   const [filterTime, setFilterTime] = useState('');
-
-  const days = weekDays(weekStart);
 
   // ── Assignment modal helpers ─────────────────────────────────────────────
 
@@ -129,32 +166,51 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
     setForm(f => ({ ...f, date, workerId: available[0]?.id ?? '' }));
   }
 
-  // ── Week data ────────────────────────────────────────────────────────────
+  // ── Period data ──────────────────────────────────────────────────────────
 
-  const weekDateStrings = useMemo(() => new Set(days.map(toISODate)), [days]);
-  const weekAssignments = useMemo(
-    () => store.assignments.filter(a => weekDateStrings.has(a.date)),
-    [store.assignments, weekDateStrings],
+  const periodDateStrings = useMemo(() => new Set(days.map(toISODate)), [days]);
+  const periodAssignments = useMemo(
+    () => store.assignments.filter(a => periodDateStrings.has(a.date)),
+    [store.assignments, periodDateStrings],
   );
 
-  // ── Copy previous week ───────────────────────────────────────────────────
+  // ── Copy previous period ─────────────────────────────────────────────────
 
-  const prevWeekCopyable = useMemo(() => {
-    const prevWeekDays = weekDays(addWeeks(weekStart, -1));
-    const prevWeekDateStrings = new Set(prevWeekDays.map(toISODate));
-    const currentWeekKeys = new Set(
-      store.assignments
-        .filter(a => weekDateStrings.has(a.date))
-        .map(a => `${a.date}:${a.shiftId}:${a.workerId}`),
+  const prevPeriodCopyable = useMemo(() => {
+    if (days.length === 0) return [];
+
+    // Build a mapping from previous-period date → current-period date by index
+    let prevDays: Date[];
+    if (schedulePeriod === 'custom') {
+      // Shift back by the same number of days as the current custom range
+      const offset = days.length;
+      prevDays = days.map(d => {
+        const prev = new Date(d);
+        prev.setDate(prev.getDate() - offset);
+        return prev;
+      });
+    } else {
+      const prevStart = addPeriod(periodStart, -1, schedulePeriod);
+      prevDays = periodDays(prevStart, schedulePeriod);
+    }
+
+    const dateMap = new Map<string, string>();
+    prevDays.forEach((d, i) => {
+      if (i < days.length) dateMap.set(toISODate(d), toISODate(days[i]));
+    });
+
+    const currentKeys = new Set(
+      periodAssignments.map(a => `${a.date}:${a.shiftId}:${a.workerId}`),
     );
+
     return store.assignments
-      .filter(a => prevWeekDateStrings.has(a.date))
-      .map(a => ({ ...a, date: toISODate(addWeeks(new Date(a.date), 1)) }))
-      .filter(a => !currentWeekKeys.has(`${a.date}:${a.shiftId}:${a.workerId}`));
-  }, [weekStart, store.assignments, weekDateStrings]);
+      .filter(a => dateMap.has(a.date))
+      .map(a => ({ ...a, date: dateMap.get(a.date)! }))
+      .filter(a => !currentKeys.has(`${a.date}:${a.shiftId}:${a.workerId}`));
+  }, [days, schedulePeriod, periodStart, periodAssignments, store.assignments]);
 
   function runAutoFill() {
-    const result = greedyAutoFill(weekStart, shifts, workers, weekAssignments, bankHolidayDateSet, workerHolidays);
+    const result = greedyAutoFill(days, shifts, workers, periodAssignments, bankHolidayDateSet, workerHolidays);
     setAutoFillResult(result);
     setAutoFillOpen(true);
   }
@@ -166,7 +222,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
     setModalOpen(false);
   }
 
-  // ── Sidebar filter logic ──────────────────────────────────────────────────
+  // ── Sidebar filter logic ─────────────────────────────────────────────────
 
   function toggleFilterTag(tagId: string) {
     setFilterTagIds(prev =>
@@ -182,16 +238,13 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
 
   const filteredWorkers = useMemo(() => {
     return workers.filter(w => {
-      // Tag filter: worker must hold every selected tag
       if (filterTagIds.length > 0 && !filterTagIds.every(tid => w.tagIds.includes(tid))) return false;
 
-      // Day + time filters combine against worker availability
       if (filterDayIndex !== null) {
         const avail = w.availability[filterDayIndex];
         if (avail === null || avail === undefined) return false;
         if (filterTime && (avail.start > filterTime || avail.end < filterTime)) return false;
       } else if (filterTime) {
-        // No day selected: pass if available at this time on at least one day
         const ok = w.availability.some(a => a !== null && a.start <= filterTime && a.end >= filterTime);
         if (!ok) return false;
       }
@@ -221,7 +274,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
       }
     }
     return set;
-  }, [drag, days, shifts, workers, store.assignments]);
+  }, [drag, days, shifts, workers, store.assignments, bankHolidayDateSet]);
 
   function stopDrag() {
     setDrag(null);
@@ -246,7 +299,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
   }
 
   function handleCellDragOver(e: React.DragEvent, key: string) {
-    if (rowDragIndex !== null) return; // row reorder in progress
+    if (rowDragIndex !== null) return;
     if (drag && validDrops.has(key)) {
       e.preventDefault();
       e.dataTransfer.dropEffect = drag.type === 'move' ? 'move' : 'copy';
@@ -268,6 +321,16 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
     stopDrag();
   }
 
+  // ── Period label & navigation ─────────────────────────────────────────────
+
+  const periodLabel = schedulePeriod === 'custom'
+    ? formatPeriodRange(
+        new Date(customPeriodStart + 'T00:00:00'),
+        'custom',
+        new Date(customPeriodEnd + 'T00:00:00'),
+      )
+    : formatPeriodRange(periodStart, schedulePeriod);
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   if (shifts.length === 0) {
@@ -282,26 +345,65 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
 
   return (
     <div className="view-container">
+      {/* ── Period selector ── */}
+      <div className="period-selector">
+        {(Object.keys(PERIOD_LABELS) as SchedulePeriodPreset[]).map(preset => (
+          <button
+            key={preset}
+            className={`period-btn${schedulePeriod === preset ? ' period-btn--active' : ''}`}
+            onClick={() => setSchedulePeriod(preset)}
+          >
+            {PERIOD_LABELS[preset]}
+          </button>
+        ))}
+        {schedulePeriod === 'custom' && (
+          <div className="period-custom-range">
+            <input
+              type="date"
+              className="form__input form__input--date"
+              value={customPeriodStart}
+              max={customPeriodEnd}
+              onChange={e => setCustomPeriod(e.target.value, customPeriodEnd)}
+            />
+            <span className="period-custom-range__sep">–</span>
+            <input
+              type="date"
+              className="form__input form__input--date"
+              value={customPeriodEnd}
+              min={customPeriodStart}
+              onChange={e => setCustomPeriod(customPeriodStart, e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
       <div className="view-toolbar">
-        <button className="btn btn--ghost btn--icon" onClick={() => setWeekStart(w => addWeeks(w, -1))}>
-          ←
-        </button>
-        <h2 className="week-label">{formatWeekRange(weekStart)}</h2>
-        <button className="btn btn--ghost btn--icon" onClick={() => setWeekStart(w => addWeeks(w, 1))}>
-          →
-        </button>
-        <button className="btn btn--ghost btn--sm" onClick={() => setWeekStart(startOfWeek(new Date()))}>
-          Today
-        </button>
+        {schedulePeriod !== 'custom' && (
+          <>
+            <button className="btn btn--ghost btn--icon" onClick={() => setPeriodStart(p => addPeriod(p, -1, schedulePeriod))}>
+              ←
+            </button>
+            <h2 className="week-label">{periodLabel}</h2>
+            <button className="btn btn--ghost btn--icon" onClick={() => setPeriodStart(p => addPeriod(p, 1, schedulePeriod))}>
+              →
+            </button>
+            <button className="btn btn--ghost btn--sm" onClick={() => setPeriodStart(startOfPeriod(new Date(), schedulePeriod))}>
+              Today
+            </button>
+          </>
+        )}
+        {schedulePeriod === 'custom' && (
+          <h2 className="week-label">{periodLabel}</h2>
+        )}
         <div className="spacer" />
-        {weekAssignments.length > 0 && (
-          <button className="btn btn--ghost btn--danger-text" onClick={() => setClearWeekOpen(true)}>
-            Clear week
+        {periodAssignments.length > 0 && (
+          <button className="btn btn--ghost btn--danger-text" onClick={() => setClearPeriodOpen(true)}>
+            Clear period
           </button>
         )}
-        {prevWeekCopyable.length > 0 && (
-          <button className="btn btn--ghost" onClick={() => setCopyPrevWeekOpen(true)}>
-            Copy prev week
+        {prevPeriodCopyable.length > 0 && (
+          <button className="btn btn--ghost" onClick={() => setCopyPrevOpen(true)}>
+            Copy prev period
           </button>
         )}
         <button className="btn btn--ghost" onClick={() => setBankHolidayOpen(true)}>🗓 Holidays</button>
@@ -310,7 +412,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
         <button className="btn btn--primary" onClick={() => openAssign()}>+ Assign</button>
       </div>
 
-      <div className="schedule-layout" onDragEnd={stopDrag}>
+      <div className={`schedule-layout${days.length > 7 ? ' schedule-layout--wide' : ''}`} onDragEnd={stopDrag}>
         {/* ── Schedule table ── */}
         <div className="schedule-main">
           <div className="schedule-wrapper">
@@ -458,9 +560,8 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
               )}
             </div>
 
-            {/* Tag filter */}
             {tags.length > 0 && (
-              <div className="sidebar-section">
+              <div className="sidebar-section sidebar-section--tags">
                 <div className="sidebar-section__label">Tag</div>
                 <div className="sidebar-filter-tags">
                   {tags.map(t => {
@@ -480,8 +581,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
               </div>
             )}
 
-            {/* Day filter */}
-            <div className="sidebar-section">
+            <div className="sidebar-section sidebar-section--days">
               <div className="sidebar-section__label">Day</div>
               <div className="day-filter">
                 {DAY_LABELS.map((label, i) => (
@@ -497,8 +597,7 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
               </div>
             </div>
 
-            {/* Time filter */}
-            <div className="sidebar-section">
+            <div className="sidebar-section sidebar-section--time">
               <div className="sidebar-section__label">Time</div>
               <div className="sidebar-time-filter">
                 <input
@@ -513,7 +612,6 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
               </div>
             </div>
 
-            {/* Worker chips */}
             <div className="workers-sidebar__chips">
               {filteredWorkers.length === 0 ? (
                 <p className="workers-sidebar__empty">No workers match</p>
@@ -649,17 +747,17 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
       />
 
       <ConfirmDialog
-        open={clearWeekOpen}
-        message={`Remove all ${weekAssignments.length} assignment${weekAssignments.length === 1 ? '' : 's'} for this week?`}
+        open={clearPeriodOpen}
+        message={`Remove all ${periodAssignments.length} assignment${periodAssignments.length === 1 ? '' : 's'} for this period?`}
         onConfirm={() => store.deleteAssignmentsForDates(days.map(toISODate))}
-        onClose={() => setClearWeekOpen(false)}
+        onClose={() => setClearPeriodOpen(false)}
       />
 
       <ConfirmDialog
-        open={copyPrevWeekOpen}
-        message={`Copy ${prevWeekCopyable.length} assignment${prevWeekCopyable.length === 1 ? '' : 's'} from the previous week?`}
-        onConfirm={() => store.addAssignments(prevWeekCopyable)}
-        onClose={() => setCopyPrevWeekOpen(false)}
+        open={copyPrevOpen}
+        message={`Copy ${prevPeriodCopyable.length} assignment${prevPeriodCopyable.length === 1 ? '' : 's'} from the previous period?`}
+        onConfirm={() => store.addAssignments(prevPeriodCopyable)}
+        onClose={() => setCopyPrevOpen(false)}
       />
 
       <AutoFillModal
@@ -673,8 +771,8 @@ export function ScheduleView({ workers, shifts, tags, bankHolidays, workerHolida
 
       <ExportModal
         open={exportOpen}
-        defaultStart={toISODate(weekStart)}
-        defaultEnd={toISODate(days[6])}
+        defaultStart={days.length > 0 ? toISODate(days[0]) : toISODate(new Date())}
+        defaultEnd={days.length > 0 ? toISODate(days[days.length - 1]) : toISODate(new Date())}
         assignments={store.assignments}
         workers={workers}
         shifts={shifts}
