@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import type { View } from './types';
 import { useStore } from './store/useStore';
-import { WorkersView } from './components/WorkersView';
-import { ShiftsView } from './components/ShiftsView';
-import { ScheduleView } from './components/ScheduleView';
-import { TagsView } from './components/TagsView';
+import { WorkersView } from './features/workers/WorkersView';
+import { ShiftsView } from './features/shifts/ShiftsView';
+import { ScheduleView } from './features/schedule/ScheduleView';
+import { TagsView } from './features/tags/TagsView';
 
 const NAV_LABELS: Record<View, string> = {
   schedule: 'Schedule',

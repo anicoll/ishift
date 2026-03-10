@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { BankHoliday } from '../types';
-import type { Store } from '../store/useStore';
-import { Modal } from './Modal';
+import type { BankHoliday } from '../../types';
+import type { Store } from '../../store/useStore';
+import { Modal } from '../../components/Modal';
 
 interface Props {
   open: boolean;

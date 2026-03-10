@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react';
-import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday } from '../types';
-import type { Store } from '../store/useStore';
+import type { Tag, Worker, ShiftType, Assignment, BankHoliday, WorkerHoliday } from '../../types';
+import type { Store } from '../../store/useStore';
 import {
   startOfWeek, weekDays, toISODate,
   formatDayHeader, formatWeekRange, isToday, addWeeks,
-} from '../utils/dates';
-import { greedyAutoFill, type AutoFillResult } from '../utils/autofill';
-import { WorkerBadge } from './WorkerBadge';
-import { TagBadge } from './TagBadge';
-import { Modal } from './Modal';
-import { ConfirmDialog } from './ConfirmDialog';
+} from '../../utils/dates';
+import { greedyAutoFill, type AutoFillResult } from '../../utils/autofill';
+import { WorkerBadge } from '../../components/WorkerBadge';
+import { TagBadge } from '../../components/TagBadge';
+import { Modal } from '../../components/Modal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { AutoFillModal } from './AutoFillModal';
 import { ExportModal } from './ExportModal';
 import { BankHolidayModal } from './BankHolidayModal';

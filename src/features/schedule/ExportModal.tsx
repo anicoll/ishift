@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import type { Assignment, Worker, ShiftType, Tag } from '../types';
-import { Modal } from './Modal';
-import { buildCsvRows, downloadCsv, triggerPrint } from '../utils/export';
+import type { Assignment, Worker, ShiftType, Tag } from '../../types';
+import { Modal } from '../../components/Modal';
+import { buildCsvRows, downloadCsv, triggerPrint } from '../../utils/export';
 
 interface Props {
   open: boolean;

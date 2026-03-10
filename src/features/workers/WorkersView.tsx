@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { Tag, Worker, DayTimeRange, WorkerHoliday } from '../types';
-import type { Store } from '../store/useStore';
-import { Modal } from './Modal';
-import { ConfirmDialog } from './ConfirmDialog';
-import { TagBadge } from './TagBadge';
+import type { Tag, Worker, DayTimeRange, WorkerHoliday } from '../../types';
+import type { Store } from '../../store/useStore';
+import { Modal } from '../../components/Modal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { TagBadge } from '../../components/TagBadge';
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);
