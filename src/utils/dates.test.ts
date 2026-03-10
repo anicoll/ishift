@@ -67,9 +67,26 @@ describe('weekDays', () => {
 });
 
 describe('toISODate', () => {
-  it('formats a date as YYYY-MM-DD using UTC', () => {
-    // Use a noon UTC date so UTC and local date match
-    expect(toISODate(new Date('2024-03-15T12:00:00Z'))).toBe('2024-03-15');
+  it('formats a local-time Date as YYYY-MM-DD', () => {
+    // Construct using local-time args so local date is unambiguous regardless of timezone
+    const d = new Date(2024, 2, 15, 9, 0, 0); // March 15 2024 09:00 local
+    expect(toISODate(d)).toBe('2024-03-15');
+  });
+
+  it('uses local date components, not UTC', () => {
+    // new Date(year, month, day) midnight local — getDate() must equal the day arg
+    const d = new Date(2024, 5, 1, 0, 0, 0); // June 1 2024 midnight local
+    const result = toISODate(d);
+    // The year/month/day extracted from result must match the local components
+    const [y, m, day] = result.split('-').map(Number);
+    expect(y).toBe(d.getFullYear());
+    expect(m).toBe(d.getMonth() + 1);
+    expect(day).toBe(d.getDate());
+  });
+
+  it('zero-pads single-digit months and days', () => {
+    const d = new Date(2024, 0, 5, 9, 0, 0); // Jan 5 2024
+    expect(toISODate(d)).toBe('2024-01-05');
   });
 });
 

@@ -44,4 +44,18 @@ export interface Assignment {
   notes: string;
 }
 
+export interface BankHoliday {
+  id: string;
+  date: string;  // "YYYY-MM-DD"
+  name: string;
+}
+
+export interface WorkerHoliday {
+  id: string;
+  workerId: string;
+  startDate: string;  // "YYYY-MM-DD"
+  endDate: string;    // "YYYY-MM-DD"
+  note: string;
+}
+
 export type View = 'schedule' | 'workers' | 'shifts' | 'tags';

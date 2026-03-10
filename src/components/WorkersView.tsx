@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import type { Tag, Worker, DayTimeRange } from '../types';
+import type { Tag, Worker, DayTimeRange, WorkerHoliday } from '../types';
 import type { Store } from '../store/useStore';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TagBadge } from './TagBadge';
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+}
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -50,14 +57,19 @@ const PRESET_COLORS = [
 interface Props {
   workers: Worker[];
   tags: Tag[];
-  store: Pick<Store, 'addWorker' | 'updateWorker' | 'deleteWorker'>;
+  workerHolidays: WorkerHoliday[];
+  store: Pick<Store, 'addWorker' | 'updateWorker' | 'deleteWorker' | 'addWorkerHoliday' | 'deleteWorkerHoliday'>;
 }
 
-export function WorkersView({ workers, tags, store }: Props) {
+export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Worker | null>(null);
   const [form, setForm] = useState<WorkerFormData>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Worker | null>(null);
+  const [holidayWorkerId, setHolidayWorkerId] = useState<string | null>(null);
+  const [newHolidayStart, setNewHolidayStart] = useState('');
+  const [newHolidayEnd, setNewHolidayEnd] = useState('');
+  const [newHolidayNote, setNewHolidayNote] = useState('');
 
   function openAdd() {
     setEditing(null);
@@ -134,6 +146,11 @@ export function WorkersView({ workers, tags, store }: Props) {
           {workers.map(w => {
             const workerTags = tags.filter(t => w.tagIds.includes(t.id));
             const fullAvail = isFullAvailability(w.availability);
+            const wHolidays = workerHolidays.filter(h => h.workerId === w.id)
+              .sort((a, b) => a.startDate.localeCompare(b.startDate));
+            const today = new Date().toISOString().slice(0, 10);
+            const activeHoliday = wHolidays.find(h => h.startDate <= today && h.endDate >= today);
+            const upcomingHolidays = wHolidays.filter(h => h.startDate > today);
             return (
               <div key={w.id} className="card card--tall" style={{ borderTopColor: w.color }}>
                 <div className="card__avatar" style={{ backgroundColor: w.color }}>
@@ -149,6 +166,16 @@ export function WorkersView({ workers, tags, store }: Props) {
                       {availabilitySummary(w.availability)}
                     </span>
                   )}
+                  {activeHoliday && (
+                    <span className="card__sub card__sub--on-holiday">
+                      On holiday until {formatDate(activeHoliday.endDate)}
+                    </span>
+                  )}
+                  {!activeHoliday && upcomingHolidays.length > 0 && (
+                    <span className="card__sub card__sub--avail">
+                      {upcomingHolidays.length} upcoming holiday{upcomingHolidays.length > 1 ? 's' : ''}
+                    </span>
+                  )}
                   {workerTags.length > 0 && (
                     <div className="card__tags">
                       {workerTags.map(t => <TagBadge key={t.id} tag={t} size="sm" />)}
@@ -156,6 +183,7 @@ export function WorkersView({ workers, tags, store }: Props) {
                   )}
                 </div>
                 <div className="card__actions">
+                  <button className="btn btn--ghost btn--sm" onClick={() => setHolidayWorkerId(w.id)}>Holidays</button>
                   <button className="btn btn--ghost btn--sm" onClick={() => openEdit(w)}>Edit</button>
                   <button
                     className="btn btn--ghost btn--sm btn--danger-text"
@@ -309,6 +337,101 @@ export function WorkersView({ workers, tags, store }: Props) {
         onConfirm={() => deleteTarget && store.deleteWorker(deleteTarget.id)}
         onClose={() => setDeleteTarget(null)}
       />
+
+      {/* ── Worker Holiday Modal ── */}
+      {(() => {
+        const hw = workers.find(w => w.id === holidayWorkerId);
+        if (!hw) return null;
+        const hwHolidays = workerHolidays
+          .filter(h => h.workerId === hw.id)
+          .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+        function handleAddHoliday(e: { preventDefault(): void }) {
+          e.preventDefault();
+          if (!newHolidayStart || !newHolidayEnd || newHolidayEnd < newHolidayStart) return;
+          store.addWorkerHoliday({
+            workerId: hw!.id,
+            startDate: newHolidayStart,
+            endDate: newHolidayEnd,
+            note: newHolidayNote.trim(),
+          });
+          setNewHolidayStart('');
+          setNewHolidayEnd('');
+          setNewHolidayNote('');
+        }
+
+        return (
+          <Modal
+            title={`Holidays — ${hw.name}`}
+            open={holidayWorkerId !== null}
+            onClose={() => setHolidayWorkerId(null)}
+          >
+            <div className="form">
+              <form onSubmit={handleAddHoliday} className="worker-holiday-add-form">
+                <div className="worker-holiday-date-row">
+                  <label className="form__label" style={{ flex: 1 }}>
+                    From
+                    <input
+                      className="form__input"
+                      type="date"
+                      value={newHolidayStart}
+                      onChange={e => setNewHolidayStart(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="form__label" style={{ flex: 1 }}>
+                    To
+                    <input
+                      className="form__input"
+                      type="date"
+                      value={newHolidayEnd}
+                      min={newHolidayStart}
+                      onChange={e => setNewHolidayEnd(e.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+                <label className="form__label">
+                  Note (optional)
+                  <input
+                    className="form__input"
+                    type="text"
+                    value={newHolidayNote}
+                    onChange={e => setNewHolidayNote(e.target.value)}
+                    placeholder="e.g. Annual leave"
+                  />
+                </label>
+                <button type="submit" className="btn btn--primary btn--sm">Add Holiday</button>
+              </form>
+
+              {hwHolidays.length === 0 ? (
+                <p className="bank-holiday-empty">No holidays assigned yet.</p>
+              ) : (
+                <ul className="bank-holiday-list">
+                  {hwHolidays.map(h => (
+                    <li key={h.id} className="bank-holiday-item">
+                      <span className="bank-holiday-item__date">
+                        {formatDate(h.startDate)} – {formatDate(h.endDate)}
+                      </span>
+                      {h.note && <span className="bank-holiday-item__name">{h.note}</span>}
+                      <button
+                        className="btn btn--ghost btn--sm btn--danger-text"
+                        onClick={() => store.deleteWorkerHoliday(h.id)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="form__footer">
+                <button className="btn btn--ghost" onClick={() => setHolidayWorkerId(null)}>Close</button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

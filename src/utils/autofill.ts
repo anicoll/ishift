@@ -1,4 +1,4 @@
-import type { Worker, ShiftType, Assignment, DayTimeRange } from '../types';
+import type { Worker, ShiftType, Assignment, DayTimeRange, WorkerHoliday } from '../types';
 import { weekDays, toISODate } from './dates';
 
 export interface AutoFillSlot {
@@ -67,11 +67,11 @@ export function workerAvailableForShift(
  * Greedy autofill for a single week.
  *
  * Strategy:
- *  1. Collect all (day × shift) slots that still need workers.
+ *  1. Collect all (day × shift) slots that still need workers, skipping bank holidays.
  *  2. Sort slots ascending by eligible-candidate count — hardest to fill first.
  *     This prevents easy slots from hoarding workers that constrained slots need.
  *  3. For each slot, pick candidates sorted by fewest weekly assignments so far
- *     (ties broken by worker order), respecting maxShiftsPerWeek.
+ *     (ties broken by worker order), respecting maxShiftsPerWeek and worker holidays.
  *  4. Assign until minWorkers is reached or candidates are exhausted.
  */
 export function greedyAutoFill(
@@ -79,6 +79,8 @@ export function greedyAutoFill(
   shifts: ShiftType[],
   workers: Worker[],
   existingAssignments: Assignment[],
+  bankHolidayDates: Set<string> = new Set(),
+  workerHolidays: WorkerHoliday[] = [],
 ): AutoFillResult {
   const days = weekDays(weekStart);
 
@@ -89,13 +91,21 @@ export function greedyAutoFill(
     weekCount.set(a.workerId, (weekCount.get(a.workerId) ?? 0) + 1);
   });
 
-  // Eligible workers per (shift × date): must have required tags AND be available
+  function workerIsOnHoliday(workerId: string, dateStr: string): boolean {
+    return workerHolidays.some(
+      h => h.workerId === workerId && h.startDate <= dateStr && h.endDate >= dateStr,
+    );
+  }
+
+  // Eligible workers per (shift × date): must have required tags, be available, and not on holiday
   function eligibleFor(shift: ShiftType, dateStr: string): Worker[] {
     const tagFiltered =
       shift.requiredTagIds.length === 0
         ? workers
         : workers.filter(w => shift.requiredTagIds.every(tid => w.tagIds.includes(tid)));
-    return tagFiltered.filter(w => workerAvailableForShift(w, dateStr, shift));
+    return tagFiltered.filter(
+      w => workerAvailableForShift(w, dateStr, shift) && !workerIsOnHoliday(w.id, dateStr),
+    );
   }
 
   // Build the list of slots that need filling
@@ -110,6 +120,8 @@ export function greedyAutoFill(
   const slots: Slot[] = [];
   for (const day of days) {
     const dateStr = toISODate(day);
+    // Skip bank holidays entirely
+    if (bankHolidayDates.has(dateStr)) continue;
     for (const shift of shifts) {
       const existing = existingAssignments.filter(
         a => a.date === dateStr && a.shiftId === shift.id,

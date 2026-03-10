@@ -191,6 +191,32 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
 }
 .schedule-table__cell:hover { background: #f0f4ff; }
 .schedule-table__cell--today { background: #fafbff; }
+.schedule-table__cell--holiday {
+  background: #f7f7f7; cursor: default;
+  pointer-events: none;
+}
+.schedule-table__cell--holiday:hover { background: #f7f7f7; }
+
+.schedule-table__day-head--holiday {
+  background: #fff8e1;
+  color: #b45309;
+}
+
+.day-head-holiday-label {
+  display: block;
+  font-size: 10px; font-weight: 500;
+  color: #b45309;
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+.cell-holiday-overlay {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 40px;
+  font-size: 11px; color: #b45309;
+  font-style: italic;
+}
 
 .cell-content {
   display: flex; flex-wrap: wrap; gap: 4px;
@@ -241,6 +267,7 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
   animation: slide-up .2s ease;
 }
 .modal--sm { max-width: 340px; }
+.modal--lg { max-width: 640px; }
 
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(16px); }
@@ -589,6 +616,92 @@ body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 
 
 /* availability summary on worker card */
 .card__sub--avail { color: var(--primary); font-weight: 500; }
+.card__sub--on-holiday { color: #b45309; font-weight: 600; }
+
+/* ── Bank Holiday Modal ──────────────────────────────────────────────────── */
+.bank-holiday-add-form {
+  display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.bank-holiday-add-form .form__input { margin: 0; }
+
+.bank-holiday-empty {
+  color: var(--text-muted); font-size: 13px;
+  padding: 12px 0; text-align: center;
+}
+
+.bank-holiday-list {
+  list-style: none; display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 16px; max-height: 280px; overflow-y: auto;
+}
+
+.bank-holiday-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 7px;
+  background: var(--bg); border: 1px solid var(--border);
+}
+
+.bank-holiday-item__date {
+  font-size: 12px; color: var(--text-muted); white-space: nowrap;
+}
+
+.bank-holiday-item__name {
+  flex: 1; font-size: 13px; font-weight: 500;
+}
+
+/* ── Bank Holiday import UI ──────────────────────────────────────────────── */
+.bh-section { margin-bottom: 16px; }
+.bh-section__title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.bh-import-controls {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.bh-import-controls .form__input { flex: 1; min-width: 120px; margin: 0; }
+.bh-year-select { max-width: 90px !important; flex: none !important; }
+
+.bh-fetch-error {
+  margin-top: 6px; font-size: 12px; color: var(--danger);
+}
+
+.bh-preview-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 10px 0 6px;
+}
+.bh-preview-count { font-size: 12px; color: var(--text-muted); }
+.bh-preview-actions { display: flex; gap: 6px; }
+
+.bh-preview-list {
+  list-style: none; display: flex; flex-direction: column; gap: 2px;
+  max-height: 240px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 4px;
+}
+
+.bh-preview-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 5px;
+  cursor: pointer; transition: background .1s;
+}
+.bh-preview-item:hover:not(.bh-preview-item--added) { background: var(--bg); }
+.bh-preview-item--added { opacity: .55; cursor: default; }
+
+.bh-preview-item__date { font-size: 11px; color: var(--text-muted); white-space: nowrap; min-width: 140px; }
+.bh-preview-item__name { flex: 1; font-size: 13px; }
+.bh-preview-item__badge {
+  font-size: 10px; font-weight: 600; color: #15803d;
+  background: #dcfce7; border-radius: 4px; padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.bh-import-footer { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+/* ── Worker Holiday Modal ────────────────────────────────────────────────── */
+.worker-holiday-add-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.worker-holiday-date-row { display: flex; gap: 12px; }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }

@@ -5,7 +5,7 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
-  size?: 'md' | 'sm';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 export function Modal({ title, open, onClose, children, size = 'md' }: ModalProps) {
@@ -22,7 +22,7 @@ export function Modal({ title, open, onClose, children, size = 'md' }: ModalProp
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className={`modal ${size === 'sm' ? 'modal--sm' : ''}`}
+        className={`modal ${size === 'sm' ? 'modal--sm' : size === 'lg' ? 'modal--lg' : ''}`}
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
