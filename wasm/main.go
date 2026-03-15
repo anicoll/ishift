@@ -139,14 +139,18 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 	}
 
 	const (
-		marginL   = 10.0
-		marginT   = 15.0
-		marginR   = 10.0
-		pageW     = 297.0
-		pageH     = 210.0
-		headerH   = 8.0
-		rowH      = 5.5
-		shiftColW = 34.0
+		marginL     = 10.0
+		marginT     = 15.0
+		marginR     = 10.0
+		pageW       = 297.0
+		pageH       = 210.0
+		headerH     = 8.0
+		nameH       = 5.5  // shift name line height
+		timeH       = 4.5  // shift time line height
+		tagH        = 4.0  // tag line height
+		workerLineH = 5.5  // worker name line height
+		padV        = 1.5  // vertical padding inside cells
+		shiftColW   = 38.0
 	)
 
 	usableW := pageW - marginL - marginR
@@ -157,7 +161,7 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 
 	pdf := fpdf.New("L", "mm", "A4", "")
 	pdf.SetMargins(marginL, marginT, marginR)
-	pdf.SetAutoPageBreak(true, 10)
+	pdf.SetAutoPageBreak(false, 0)
 	pdf.AddPage()
 
 	pdf.SetFont("Helvetica", "B", 13)
@@ -169,7 +173,7 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 		pdf.SetFont("Helvetica", "B", 7)
 		pdf.SetFillColor(220, 220, 220)
 		pdf.SetTextColor(30, 30, 30)
-		pdf.SetDrawColor(180, 180, 180)
+		pdf.SetDrawColor(160, 160, 160)
 		pdf.CellFormat(shiftColW, headerH, "Shift", "1", 0, "C", true, 0, "")
 		for _, d := range days {
 			pdf.CellFormat(dayColW, headerH, dayLabel(d), "1", 0, "C", true, 0, "")
@@ -179,67 +183,83 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 	printHeader()
 
 	for _, shift := range req.Shifts {
-		maxNames := 1
+		// Height needed by the shift label cell
+		shiftLabelH := padV + nameH + timeH + float64(len(shift.RequiredTagIDs))*tagH + padV
+
+		// Height needed by the tallest worker cell
+		maxWorkers := 1
 		for _, d := range days {
-			k := cellKey{d, shift.ID}
-			if n := len(assignMap[k]); n > maxNames {
-				maxNames = n
+			if n := len(assignMap[cellKey{d, shift.ID}]); n > maxWorkers {
+				maxWorkers = n
 			}
 		}
-		cellH := float64(maxNames)*rowH + 2.0
+		workerCellH := padV + float64(maxWorkers)*workerLineH + padV
 
+		cellH := shiftLabelH
+		if workerCellH > cellH {
+			cellH = workerCellH
+		}
+
+		// Page break
 		if pdf.GetY()+cellH > pageH-10 {
 			pdf.AddPage()
 			printHeader()
 		}
 
 		startY := pdf.GetY()
-
 		sr, sg, sb := hexToRGB(shift.Color)
-		pdf.SetFillColor(sr, sg, sb)
-		if luminance(sr, sg, sb) < 128 {
-			pdf.SetTextColor(255, 255, 255)
-		} else {
-			pdf.SetTextColor(30, 30, 30)
-		}
-		pdf.SetXY(marginL, startY)
-		pdf.SetFont("Helvetica", "B", 7)
-		pdf.MultiCell(shiftColW, rowH, fmt.Sprintf("%s\n%s-%s", shift.Name, shift.Start, shift.End), "1", "L", true)
 
-		if len(shift.RequiredTagIDs) > 0 {
-			pdf.SetFont("Helvetica", "I", 6)
-			pdf.SetTextColor(80, 80, 80)
-			for _, tid := range shift.RequiredTagIDs {
-				if t, ok := tagMap[tid]; ok {
-					pdf.SetX(marginL)
-					pdf.CellFormat(shiftColW, 4, t.Name, "", 1, "L", false, 0, "")
-				}
+		// ── shift label cell ──────────────────────────────────────────────────
+		pdf.SetDrawColor(160, 160, 160)
+		pdf.SetFillColor(sr, sg, sb)
+		pdf.Rect(marginL, startY, shiftColW, cellH, "FD")
+
+		var textR, textG, textB int
+		if luminance(sr, sg, sb) < 128 {
+			textR, textG, textB = 255, 255, 255
+		} else {
+			textR, textG, textB = 30, 30, 30
+		}
+
+		// Shift name (bold)
+		pdf.SetFont("Helvetica", "B", 7)
+		pdf.SetTextColor(textR, textG, textB)
+		pdf.SetXY(marginL+1, startY+padV)
+		pdf.CellFormat(shiftColW-2, nameH, shift.Name, "", 0, "L", false, 0, "")
+
+		// Time range
+		pdf.SetFont("Helvetica", "", 6)
+		pdf.SetTextColor(textR, textG, textB)
+		pdf.SetXY(marginL+1, startY+padV+nameH)
+		pdf.CellFormat(shiftColW-2, timeH, shift.Start+"-"+shift.End, "", 0, "L", false, 0, "")
+
+		// Required tags
+		pdf.SetFont("Helvetica", "I", 6)
+		pdf.SetTextColor(textR, textG, textB)
+		for ti, tid := range shift.RequiredTagIDs {
+			if t, ok := tagMap[tid]; ok {
+				pdf.SetXY(marginL+1, startY+padV+nameH+timeH+float64(ti)*tagH)
+				pdf.CellFormat(shiftColW-2, tagH, t.Name, "", 0, "L", false, 0, "")
 			}
 		}
 
+		// ── day worker cells ──────────────────────────────────────────────────
 		pdf.SetFont("Helvetica", "", 7)
 		pdf.SetTextColor(30, 30, 30)
 		pdf.SetFillColor(255, 255, 255)
+		pdf.SetDrawColor(160, 160, 160)
 
 		for i, d := range days {
 			cellX := marginL + shiftColW + float64(i)*dayColW
-			pdf.SetXY(cellX, startY)
-			k := cellKey{d, shift.ID}
-			names := ""
-			for ai, a := range assignMap[k] {
-				if ai > 0 {
-					names += "\n"
-				}
-				names += workerMap[a.WorkerID].Name
+			pdf.Rect(cellX, startY, dayColW, cellH, "D")
+
+			for wi, a := range assignMap[cellKey{d, shift.ID}] {
+				pdf.SetXY(cellX+1, startY+padV+float64(wi)*workerLineH)
+				pdf.CellFormat(dayColW-2, workerLineH, workerMap[a.WorkerID].Name, "", 0, "L", false, 0, "")
 			}
-			pdf.MultiCell(dayColW, rowH, names, "1", "L", false)
 		}
 
-		nextY := startY + cellH
-		if pdf.GetY() > nextY {
-			nextY = pdf.GetY()
-		}
-		pdf.SetXY(marginL, nextY)
+		pdf.SetXY(marginL, startY+cellH)
 	}
 
 	writer := &byteWriter{}
