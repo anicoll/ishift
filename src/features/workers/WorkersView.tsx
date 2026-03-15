@@ -7,7 +7,7 @@ import { TagBadge } from '../../components/TagBadge'
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+  return new Date(year, month - 1, day).toLocaleDateString('en-AU', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
