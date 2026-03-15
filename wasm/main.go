@@ -148,7 +148,9 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 		nameH       = 5.5  // shift name line height
 		timeH       = 4.5  // shift time line height
 		tagH        = 4.0  // tag line height
-		workerLineH = 5.5  // worker name line height
+		workerLineH = 5.0  // worker name line height
+		notesLineH  = 4.0  // notes line height (below worker name)
+		entryH      = workerLineH + notesLineH // height per assignment slot
 		padV        = 1.5  // vertical padding inside cells
 		shiftColW   = 38.0
 	)
@@ -193,7 +195,7 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 				maxWorkers = n
 			}
 		}
-		workerCellH := padV + float64(maxWorkers)*workerLineH + padV
+		workerCellH := padV + float64(maxWorkers)*entryH + padV
 
 		cellH := shiftLabelH
 		if workerCellH > cellH {
@@ -254,8 +256,19 @@ func generateSchedulePDF(req PDFRequest) ([]byte, error) {
 			pdf.Rect(cellX, startY, dayColW, cellH, "D")
 
 			for wi, a := range assignMap[cellKey{d, shift.ID}] {
-				pdf.SetXY(cellX+1, startY+padV+float64(wi)*workerLineH)
+				entryY := startY + padV + float64(wi)*entryH
+				// Worker name
+				pdf.SetFont("Helvetica", "", 7)
+				pdf.SetTextColor(30, 30, 30)
+				pdf.SetXY(cellX+1, entryY)
 				pdf.CellFormat(dayColW-2, workerLineH, workerMap[a.WorkerID].Name, "", 0, "L", false, 0, "")
+				// Notes (italic, lighter)
+				if a.Notes != "" {
+					pdf.SetFont("Helvetica", "I", 5.5)
+					pdf.SetTextColor(90, 90, 90)
+					pdf.SetXY(cellX+1, entryY+workerLineH)
+					pdf.CellFormat(dayColW-2, notesLineH, a.Notes, "", 0, "L", false, 0, "")
+				}
 			}
 		}
 

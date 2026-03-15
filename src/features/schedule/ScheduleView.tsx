@@ -48,6 +48,7 @@ interface Props {
     | 'addAssignment'
     | 'addAssignments'
     | 'deleteAssignment'
+    | 'updateAssignmentNotes'
     | 'deleteAssignmentsForDates'
     | 'getAssignmentsFor'
     | 'eligibleWorkers'
@@ -126,6 +127,8 @@ export function ScheduleView({
     notes: '',
   })
   const [deleteTarget, setDeleteTarget] = useState<Assignment | null>(null)
+  const [editNotesTarget, setEditNotesTarget] = useState<Assignment | null>(null)
+  const [editNotesValue, setEditNotesValue] = useState('')
   const [clearPeriodOpen, setClearPeriodOpen] = useState(false)
   const [copyPrevOpen, setCopyPrevOpen] = useState(false)
   const [autoFillOpen, setAutoFillOpen] = useState(false)
@@ -164,12 +167,13 @@ export function ScheduleView({
     () => new Set(store.getAssignmentsFor(form.date, form.shiftId).map((a) => a.workerId)),
     [store, form.date, form.shiftId],
   )
+  const eligibleForShift = useMemo(
+    () => (form.shiftId ? store.eligibleWorkers(form.shiftId) : workers),
+    [form.shiftId, store, workers],
+  )
   const eligible = useMemo(
-    () =>
-      (form.shiftId ? store.eligibleWorkers(form.shiftId) : workers).filter(
-        (w) => !alreadyAssignedIds.has(w.id),
-      ),
-    [form.shiftId, store, workers, alreadyAssignedIds],
+    () => eligibleForShift.filter((w) => !alreadyAssignedIds.has(w.id)),
+    [eligibleForShift, alreadyAssignedIds],
   )
 
   function availableFor(date: string, shiftId: string): Worker[] {
@@ -607,7 +611,13 @@ export function ScheduleView({
                                       key={assignment.id}
                                       draggable
                                       className={`badge-drag-wrapper${drag?.assignmentId === assignment.id ? ' badge-drag-wrapper--dragging' : ''}`}
-                                      onClick={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (!drag) {
+                                          setEditNotesTarget(assignment)
+                                          setEditNotesValue(assignment.notes ?? '')
+                                        }
+                                      }}
                                       onDragStart={(e) => {
                                         e.stopPropagation()
                                         e.dataTransfer.effectAllowed = 'move'
@@ -625,6 +635,9 @@ export function ScheduleView({
                                           drag ? undefined : () => setDeleteTarget(assignment)
                                         }
                                       />
+                                      {assignment.notes && (
+                                        <span className="assignment-notes">{assignment.notes}</span>
+                                      )}
                                     </span>
                                   ))}
                                   {!drag && <span className="cell-add-hint">+</span>}
@@ -839,8 +852,10 @@ export function ScheduleView({
           <label className="form__label">
             Worker *
             {eligible.length === 0 ? (
-              <p className="form__warning">
-                No workers have the required tags for this shift. Add tags to workers first.
+              <p className={eligibleForShift.length === 0 ? 'form__warning' : 'form__hint'}>
+                {eligibleForShift.length === 0
+                  ? 'No workers have the required tags for this shift. Add tags to workers first.'
+                  : 'All available workers are already assigned to this shift.'}
               </p>
             ) : (
               <select
@@ -887,6 +902,46 @@ export function ScheduleView({
         onConfirm={() => deleteTarget && store.deleteAssignment(deleteTarget.id)}
         onClose={() => setDeleteTarget(null)}
       />
+
+      <Modal
+        title="Edit Notes"
+        open={editNotesTarget !== null}
+        onClose={() => setEditNotesTarget(null)}
+        size="sm"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (editNotesTarget) store.updateAssignmentNotes(editNotesTarget.id, editNotesValue)
+            setEditNotesTarget(null)
+          }}
+          className="form"
+        >
+          <label className="form__label">
+            Notes
+            <input
+              className="form__input"
+              type="text"
+              value={editNotesValue}
+              onChange={(e) => setEditNotesValue(e.target.value)}
+              placeholder="Optional note"
+              autoFocus
+            />
+          </label>
+          <div className="form__footer">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setEditNotesTarget(null)}
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn btn--primary">
+              Save
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <ConfirmDialog
         open={clearPeriodOpen}
