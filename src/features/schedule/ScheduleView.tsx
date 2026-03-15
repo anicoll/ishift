@@ -883,6 +883,7 @@ export function ScheduleView({
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               placeholder="Optional note"
+              maxLength={120}
             />
           </label>
           <div className="form__footer">
@@ -925,6 +926,7 @@ export function ScheduleView({
               value={editNotesValue}
               onChange={(e) => setEditNotesValue(e.target.value)}
               placeholder="Optional note"
+              maxLength={120}
               autoFocus
             />
           </label>
