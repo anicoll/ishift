@@ -4,6 +4,8 @@ import type { Store } from '../../store/useStore';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TagBadge } from '../../components/TagBadge';
+import { ColorPicker } from '../../components/ColorPicker';
+import { ViewModeToggle } from '../../components/ViewModeToggle';
 
 interface TagFormData {
   name: string;
@@ -27,6 +29,7 @@ export function TagsView({ tags, store }: Props) {
   const [editing, setEditing] = useState<Tag | null>(null);
   const [form, setForm] = useState<TagFormData>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Tag | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   function openAdd() {
     setEditing(null);
@@ -55,6 +58,8 @@ export function TagsView({ tags, store }: Props) {
     <div className="view-container">
       <div className="view-toolbar">
         <h2 className="view-title">Tags</h2>
+        <div className="spacer" />
+        <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         <button className="btn btn--primary" onClick={openAdd}>+ Add Tag</button>
       </div>
 
@@ -64,6 +69,29 @@ export function TagsView({ tags, store }: Props) {
 
       {tags.length === 0 ? (
         <p className="empty-hint">No tags yet. Add your first tag above.</p>
+      ) : viewMode === 'table' ? (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Tag</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {tags.map(t => (
+              <tr key={t.id}>
+                <td><TagBadge tag={t} /></td>
+                <td className="action-cell">
+                  <button className="btn btn--ghost btn--sm" onClick={() => openEdit(t)}>Edit</button>
+                  <button
+                    className="btn btn--ghost btn--sm btn--danger-text"
+                    onClick={() => setDeleteTarget(t)}
+                  >Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ) : (
         <div className="card-grid">
           {tags.map(t => (
@@ -105,25 +133,11 @@ export function TagsView({ tags, store }: Props) {
           </label>
           <div className="form__label">
             Color
-            <div className="color-picker">
-              {PRESET_COLORS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`color-swatch ${form.color === c ? 'color-swatch--active' : ''}`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setForm(f => ({ ...f, color: c }))}
-                  aria-label={c}
-                />
-              ))}
-              <input
-                type="color"
-                className="color-custom"
-                value={form.color}
-                onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                title="Custom color"
-              />
-            </div>
+            <ColorPicker
+              value={form.color}
+              presets={PRESET_COLORS}
+              onChange={(c) => setForm(f => ({ ...f, color: c }))}
+            />
           </div>
           {form.name && (
             <div className="form__label">

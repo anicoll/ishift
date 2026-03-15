@@ -1,4 +1,4 @@
-import type { SchedulePeriodPreset } from '../types'
+import type { SchedulePeriodPreset, ScheduleDefinition } from '../types'
 
 /** Returns the Monday of the week containing `date`. */
 export function startOfWeek(date: Date): Date {
@@ -137,6 +137,40 @@ export function addPeriod(date: Date, n: number, preset: SchedulePeriodPreset): 
     return d
   }
   return date // custom
+}
+
+// ── Schedule-definition–aware utilities ──────────────────────────────────────
+
+/**
+ * Returns only the dates within the period starting at `start` that fall on
+ * working days defined by `def.workDays` (Mon=0 … Sun=6).
+ */
+export function periodDaysForSchedule(start: Date, def: ScheduleDefinition): Date[] {
+  const all = Array.from({ length: def.lengthDays }, (_, i) => {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
+    return d
+  })
+  return all.filter((d) => {
+    const dow = d.getDay() // 0 = Sun
+    const idx = dow === 0 ? 6 : dow - 1 // convert to Mon=0…Sun=6
+    return def.workDays[idx]
+  })
+}
+
+/** Advances (or retreats) a period start by `n` periods of `lengthDays` each. */
+export function addSchedulePeriod(date: Date, lengthDays: number, n: number): Date {
+  const d = new Date(date)
+  d.setDate(d.getDate() + n * lengthDays)
+  return d
+}
+
+/** Formats a human-readable range label for a schedule-definition period. */
+export function formatSchedulePeriodRange(start: Date, def: ScheduleDefinition): string {
+  const end = new Date(start)
+  end.setDate(end.getDate() + def.lengthDays - 1)
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+  return `${start.toLocaleDateString('en-AU', opts)} – ${end.toLocaleDateString('en-AU', { ...opts, year: 'numeric' })}`
 }
 
 /** Formats a human-readable label for the period. */

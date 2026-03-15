@@ -6,17 +6,17 @@ import type {
   Assignment,
   BankHoliday,
   WorkerHoliday,
-  SchedulePeriodPreset,
+  ScheduleDefinition,
 } from '../../types'
 import type { Store } from '../../store/useStore'
 import {
-  startOfPeriod,
-  periodDays,
+  startOfWeek,
+  periodDaysForSchedule,
   toISODate,
   formatDayHeader,
-  formatPeriodRange,
+  formatSchedulePeriodRange,
   isToday,
-  addPeriod,
+  addSchedulePeriod,
 } from '../../utils/dates'
 import { greedyAutoFill, type AutoFillResult } from '../../utils/autofill'
 import { WorkerBadge } from '../../components/WorkerBadge'
@@ -30,19 +30,13 @@ import { BankHolidayModal } from './BankHolidayModal'
 // 0 = Monday … 6 = Sunday
 const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
-const PERIOD_LABELS: Record<SchedulePeriodPreset, string> = {
-  week: 'Week',
-  fortnight: 'Fortnight',
-  month: 'Month',
-  custom: 'Custom',
-}
-
 interface Props {
   workers: Worker[]
   shifts: ShiftType[]
   tags: Tag[]
   bankHolidays: BankHoliday[]
   workerHolidays: WorkerHoliday[]
+  scheduleDefinitions: ScheduleDefinition[]
   store: Pick<
     Store,
     | 'addAssignment'
@@ -56,11 +50,8 @@ interface Props {
     | 'reorderShifts'
     | 'addBankHoliday'
     | 'deleteBankHoliday'
-    | 'schedulePeriod'
-    | 'setSchedulePeriod'
-    | 'customPeriodStart'
-    | 'customPeriodEnd'
-    | 'setCustomPeriod'
+    | 'activeScheduleId'
+    | 'setActiveScheduleId'
   >
 }
 
@@ -83,39 +74,35 @@ export function ScheduleView({
   tags,
   bankHolidays,
   workerHolidays,
+  scheduleDefinitions,
   store,
 }: Props) {
-  const { schedulePeriod, setSchedulePeriod, customPeriodStart, customPeriodEnd, setCustomPeriod } =
-    store
+  const { activeScheduleId, setActiveScheduleId } = store
 
-  // ── Period navigation state (not used for 'custom') ──────────────────────
-  const [periodStart, setPeriodStart] = useState<Date>(() =>
-    schedulePeriod === 'custom' ? new Date() : startOfPeriod(new Date(), schedulePeriod),
-  )
-
-  // Reset to today whenever the preset changes.
-  // Storing the previous value in state and comparing during render is the
-  // React-recommended pattern for resetting derived state without useEffect.
-  const [prevSchedulePeriod, setPrevSchedulePeriod] = useState(schedulePeriod)
-  if (prevSchedulePeriod !== schedulePeriod) {
-    setPrevSchedulePeriod(schedulePeriod)
-    if (schedulePeriod !== 'custom') {
-      setPeriodStart(startOfPeriod(new Date(), schedulePeriod))
+  const activeSchedule: ScheduleDefinition =
+    scheduleDefinitions.find((d) => d.id === activeScheduleId) ??
+    scheduleDefinitions[0] ?? {
+      id: '',
+      name: 'Work Week',
+      lengthDays: 7,
+      workDays: [true, true, true, true, true, false, false],
     }
+
+  // ── Period navigation state ───────────────────────────────────────────────
+  const [periodStart, setPeriodStart] = useState<Date>(() => startOfWeek(new Date()))
+
+  // Reset to current week whenever the active schedule changes.
+  const [prevScheduleId, setPrevScheduleId] = useState(activeScheduleId)
+  if (prevScheduleId !== activeScheduleId) {
+    setPrevScheduleId(activeScheduleId)
+    setPeriodStart(startOfWeek(new Date()))
   }
 
   // ── Days in the current view ─────────────────────────────────────────────
-  const days = useMemo<Date[]>(() => {
-    if (schedulePeriod === 'custom') {
-      if (!customPeriodStart || !customPeriodEnd) return []
-      return periodDays(
-        new Date(customPeriodStart + 'T00:00:00'),
-        'custom',
-        new Date(customPeriodEnd + 'T00:00:00'),
-      )
-    }
-    return periodDays(periodStart, schedulePeriod)
-  }, [schedulePeriod, periodStart, customPeriodStart, customPeriodEnd])
+  const days = useMemo<Date[]>(
+    () => periodDaysForSchedule(periodStart, activeSchedule),
+    [periodStart, activeSchedule],
+  )
 
   // ── Modal / confirm state ─────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false)
@@ -218,20 +205,8 @@ export function ScheduleView({
   const prevPeriodCopyable = useMemo(() => {
     if (days.length === 0) return []
 
-    // Build a mapping from previous-period date → current-period date by index
-    let prevDays: Date[]
-    if (schedulePeriod === 'custom') {
-      // Shift back by the same number of days as the current custom range
-      const offset = days.length
-      prevDays = days.map((d) => {
-        const prev = new Date(d)
-        prev.setDate(prev.getDate() - offset)
-        return prev
-      })
-    } else {
-      const prevStart = addPeriod(periodStart, -1, schedulePeriod)
-      prevDays = periodDays(prevStart, schedulePeriod)
-    }
+    const prevStart = addSchedulePeriod(periodStart, activeSchedule.lengthDays, -1)
+    const prevDays = periodDaysForSchedule(prevStart, activeSchedule)
 
     const dateMap = new Map<string, string>()
     prevDays.forEach((d, i) => {
@@ -246,7 +221,7 @@ export function ScheduleView({
       .filter((a) => dateMap.has(a.date))
       .map((a) => ({ ...a, date: dateMap.get(a.date)! }))
       .filter((a) => !currentKeys.has(`${a.date}:${a.shiftId}:${a.workerId}`))
-  }, [days, schedulePeriod, periodStart, periodAssignments, store.assignments])
+  }, [days, activeSchedule, periodStart, periodAssignments, store.assignments])
 
   function runAutoFill() {
     const result = greedyAutoFill(
@@ -383,14 +358,7 @@ export function ScheduleView({
 
   // ── Period label & navigation ─────────────────────────────────────────────
 
-  const periodLabel =
-    schedulePeriod === 'custom'
-      ? formatPeriodRange(
-          new Date(customPeriodStart + 'T00:00:00'),
-          'custom',
-          new Date(customPeriodEnd + 'T00:00:00'),
-        )
-      : formatPeriodRange(periodStart, schedulePeriod)
+  const periodLabel = formatSchedulePeriodRange(periodStart, activeSchedule)
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -406,63 +374,48 @@ export function ScheduleView({
 
   return (
     <div className="view-container">
-      {/* ── Period selector ── */}
+      {/* ── Schedule selector ── */}
       <div className="period-selector">
-        {(Object.keys(PERIOD_LABELS) as SchedulePeriodPreset[]).map((preset) => (
-          <button
-            key={preset}
-            className={`period-btn${schedulePeriod === preset ? ' period-btn--active' : ''}`}
-            onClick={() => setSchedulePeriod(preset)}
-          >
-            {PERIOD_LABELS[preset]}
-          </button>
-        ))}
-        {schedulePeriod === 'custom' && (
-          <div className="period-custom-range">
-            <input
-              type="date"
-              className="form__input form__input--date"
-              value={customPeriodStart}
-              max={customPeriodEnd}
-              onChange={(e) => setCustomPeriod(e.target.value, customPeriodEnd)}
-            />
-            <span className="period-custom-range__sep">–</span>
-            <input
-              type="date"
-              className="form__input form__input--date"
-              value={customPeriodEnd}
-              min={customPeriodStart}
-              onChange={(e) => setCustomPeriod(customPeriodStart, e.target.value)}
-            />
-          </div>
-        )}
+        <label className="period-selector__label">Schedule:</label>
+        <select
+          className="period-selector__select"
+          value={activeScheduleId}
+          onChange={(e) => setActiveScheduleId(e.target.value)}
+        >
+          {scheduleDefinitions.map((def) => (
+            <option key={def.id} value={def.id}>
+              {def.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="view-toolbar">
-        {schedulePeriod !== 'custom' && (
-          <>
-            <button
-              className="btn btn--ghost btn--icon"
-              onClick={() => setPeriodStart((p) => addPeriod(p, -1, schedulePeriod))}
-            >
-              ←
-            </button>
-            <h2 className="week-label">{periodLabel}</h2>
-            <button
-              className="btn btn--ghost btn--icon"
-              onClick={() => setPeriodStart((p) => addPeriod(p, 1, schedulePeriod))}
-            >
-              →
-            </button>
-            <button
-              className="btn btn--ghost btn--sm"
-              onClick={() => setPeriodStart(startOfPeriod(new Date(), schedulePeriod))}
-            >
-              Today
-            </button>
-          </>
-        )}
-        {schedulePeriod === 'custom' && <h2 className="week-label">{periodLabel}</h2>}
+        <>
+          <button
+            className="btn btn--ghost btn--icon"
+            onClick={() =>
+              setPeriodStart((p) => addSchedulePeriod(p, activeSchedule.lengthDays, -1))
+            }
+          >
+            ←
+          </button>
+          <h2 className="week-label">{periodLabel}</h2>
+          <button
+            className="btn btn--ghost btn--icon"
+            onClick={() =>
+              setPeriodStart((p) => addSchedulePeriod(p, activeSchedule.lengthDays, 1))
+            }
+          >
+            →
+          </button>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() => setPeriodStart(startOfWeek(new Date()))}
+          >
+            Today
+          </button>
+        </>
         <div className="spacer" />
         {periodAssignments.length > 0 && (
           <button

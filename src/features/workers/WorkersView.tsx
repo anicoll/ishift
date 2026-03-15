@@ -4,6 +4,9 @@ import type { Store } from '../../store/useStore'
 import { Modal } from '../../components/Modal'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { TagBadge } from '../../components/TagBadge'
+import { ColorPicker } from '../../components/ColorPicker'
+import { TagToggleList } from '../../components/TagToggleList'
+import { ViewModeToggle } from '../../components/ViewModeToggle'
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
@@ -76,6 +79,7 @@ export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
   const [form, setForm] = useState<WorkerFormData>(EMPTY_FORM)
   const [deleteTarget, setDeleteTarget] = useState<Worker | null>(null)
   const [holidayWorkerId, setHolidayWorkerId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
   const [newHolidayStart, setNewHolidayStart] = useState('')
   const [newHolidayEnd, setNewHolidayEnd] = useState('')
   const [newHolidayNote, setNewHolidayNote] = useState('')
@@ -190,6 +194,8 @@ export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
     <div className="view-container">
       <div className="view-toolbar">
         <h2 className="view-title">Workers</h2>
+        <div className="spacer" />
+        <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         <button className="btn btn--primary" onClick={openAdd}>
           + Add Worker
         </button>
@@ -207,23 +213,11 @@ export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
           {tags.length > 0 && (
             <div className="workers-filter-bar__group">
               <span className="workers-filter-bar__label">Tags</span>
-              <div className="tag-toggle-list">
-                {tags.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`tag-toggle${filterTagIds.includes(t.id) ? ' tag-toggle--active' : ''}`}
-                    style={
-                      filterTagIds.includes(t.id)
-                        ? { backgroundColor: t.color + '22', borderColor: t.color, color: t.color }
-                        : {}
-                    }
-                    onClick={() => toggleFilterTag(t.id)}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
+              <TagToggleList
+                tags={tags}
+                selectedIds={filterTagIds}
+                onToggle={toggleFilterTag}
+              />
             </div>
           )}
           <div className="workers-filter-bar__group">
@@ -262,6 +256,52 @@ export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
         <p className="empty-hint">No workers yet. Add your first worker above.</p>
       ) : visibleWorkers.length === 0 ? (
         <p className="empty-hint">No workers match the current filters.</p>
+      ) : viewMode === 'table' ? (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Max / wk</th>
+              <th>Availability</th>
+              <th>Tags</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {visibleWorkers.map((w) => {
+              const workerTags = tags.filter((t) => w.tagIds.includes(t.id))
+              const fullAvail = isFullAvailability(w.availability)
+              const activeHoliday = workerHolidays.find(
+                (h) => h.workerId === w.id && h.startDate <= today && h.endDate >= today,
+              )
+              return (
+                <tr key={w.id}>
+                  <td>
+                    <span className="shift-name-cell">
+                      <span className="shift-color-dot" style={{ backgroundColor: w.color }} />
+                      {w.name}
+                      {activeHoliday && <span className="badge badge--holiday">On holiday</span>}
+                    </span>
+                  </td>
+                  <td>{w.role || <span className="text-muted">—</span>}</td>
+                  <td>{w.maxShiftsPerWeek}</td>
+                  <td>{fullAvail ? 'All days' : availabilitySummary(w.availability)}</td>
+                  <td>
+                    {workerTags.length > 0
+                      ? <span className="workday-chips">{workerTags.map((t) => <TagBadge key={t.id} tag={t} size="sm" />)}</span>
+                      : <span className="text-muted">—</span>}
+                  </td>
+                  <td className="action-cell">
+                    <button className="btn btn--ghost btn--sm" onClick={() => setHolidayWorkerId(w.id)}>Holidays</button>
+                    <button className="btn btn--ghost btn--sm" onClick={() => openEdit(w)}>Edit</button>
+                    <button className="btn btn--ghost btn--sm btn--danger-text" onClick={() => setDeleteTarget(w)}>Delete</button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       ) : (
         <div className="card-grid">
           {visibleWorkers.map((w) => {
@@ -360,25 +400,11 @@ export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
           </label>
           <div className="form__label">
             Color
-            <div className="color-picker">
-              {PRESET_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`color-swatch ${form.color === c ? 'color-swatch--active' : ''}`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setForm((f) => ({ ...f, color: c }))}
-                  aria-label={c}
-                />
-              ))}
-              <input
-                type="color"
-                className="color-custom"
-                value={form.color}
-                onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                title="Custom color"
-              />
-            </div>
+            <ColorPicker
+              value={form.color}
+              presets={PRESET_COLORS}
+              onChange={(c) => setForm((f) => ({ ...f, color: c }))}
+            />
           </div>
           <label className="form__label">
             Max Shifts / Week (autofill limit)
@@ -436,23 +462,11 @@ export function WorkersView({ workers, tags, workerHolidays, store }: Props) {
           {tags.length > 0 && (
             <div className="form__label">
               Tags / Qualifications
-              <div className="tag-toggle-list">
-                {tags.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`tag-toggle ${form.tagIds.includes(t.id) ? 'tag-toggle--active' : ''}`}
-                    style={
-                      form.tagIds.includes(t.id)
-                        ? { backgroundColor: t.color + '22', borderColor: t.color, color: t.color }
-                        : {}
-                    }
-                    onClick={() => toggleTag(t.id)}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
+              <TagToggleList
+                tags={tags}
+                selectedIds={form.tagIds}
+                onToggle={toggleTag}
+              />
             </div>
           )}
           <div className="form__footer">

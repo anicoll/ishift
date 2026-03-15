@@ -1552,3 +1552,169 @@ body {
     color: black !important;
   }
 }
+
+/* ── Schedule selector (replaces period preset buttons) ─────────────────── */
+.period-selector__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.period-selector__select {
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  min-width: 160px;
+  width: auto;
+  cursor: pointer;
+}
+
+/* ── SchedulesView: data table ───────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th,
+.data-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.data-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface);
+}
+.data-table tr:hover td {
+  background: var(--bg);
+}
+.data-table tr.row--active td {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.action-cell {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* ── Working day chips ───────────────────────────────────────────────────── */
+.workday-chips {
+  display: inline-flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.workday-chip {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.workday-chip--on {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+/* ── Working day toggle checkboxes (in form) ─────────────────────────────── */
+.form__fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 0;
+}
+.form__legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.workday-toggle-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.workday-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.workday-toggle input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+.form__hint--warn {
+  color: var(--danger);
+  margin-top: 6px;
+}
+
+/* ── View mode toggle ────────────────────────────────────────────────────── */
+.view-mode-toggle {
+  display: flex;
+  gap: 2px;
+}
+.btn--active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.btn--active:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ── Shift/worker name cell with color dot ───────────────────────────────── */
+.shift-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.shift-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* ── Active badge ────────────────────────────────────────────────────────── */
+.badge--active {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+}
+.badge--holiday {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+.action-cell {
+  white-space: nowrap;
+}
