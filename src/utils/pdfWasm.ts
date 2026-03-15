@@ -18,31 +18,22 @@ interface PDFResult {
 
 let wasmReady: Promise<void> | null = null
 
-function initWasm(base: string): Promise<void> {
+function initWasm(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof window.Go === 'undefined') {
       reject(new Error('Go WASM runtime not loaded. Ensure wasm_exec.js is included.'))
       return
     }
     const go = new window.Go()
-    WebAssembly.instantiateStreaming(fetch(`${base}pdf.wasm`), go.importObject)
+    // import.meta.env.BASE_URL is set by Vite to the configured base path,
+    // e.g. '/ishift/' on GitHub Pages or '/' in dev — so the fetch is always correct.
+    WebAssembly.instantiateStreaming(fetch(`${import.meta.env.BASE_URL}pdf.wasm`), go.importObject)
       .then((result) => {
         go.run(result.instance)
         resolve()
       })
       .catch(reject)
   })
-}
-
-function getBase(importMeta: { url: string }): string {
-  // Derive the public base path from the script URL, falling back to '/'
-  try {
-    const url = new URL(importMeta.url)
-    const base = document.querySelector<HTMLBaseElement>('base')?.href ?? url.origin + '/'
-    return base.endsWith('/') ? base : base + '/'
-  } catch {
-    return '/'
-  }
 }
 
 export async function downloadSchedulePDF(
@@ -53,10 +44,8 @@ export async function downloadSchedulePDF(
   startDate: string,
   endDate: string,
 ): Promise<void> {
-  const base = getBase(import.meta)
-
   if (!wasmReady) {
-    wasmReady = initWasm(base)
+    wasmReady = initWasm()
   }
   await wasmReady
 
