@@ -5,11 +5,13 @@ import { WorkersView } from './features/workers/WorkersView'
 import { ShiftsView } from './features/shifts/ShiftsView'
 import { ScheduleView } from './features/schedule/ScheduleView'
 import { TagsView } from './features/tags/TagsView'
+import { SchedulesView } from './features/schedules/SchedulesView'
 
 const NAV_LABELS: Record<View, string> = {
   schedule: 'Schedule',
   workers: 'Workers',
   shifts: 'Shift Types',
+  schedules: 'Schedules',
   tags: 'Tags',
 }
 
@@ -45,6 +47,7 @@ export default function App() {
             tags={store.tags}
             bankHolidays={store.bankHolidays}
             workerHolidays={store.workerHolidays}
+            scheduleDefinitions={store.scheduleDefinitions}
             store={store}
           />
         )}
@@ -58,6 +61,13 @@ export default function App() {
         )}
         {view === 'shifts' && <ShiftsView shifts={store.shifts} tags={store.tags} store={store} />}
         {view === 'tags' && <TagsView tags={store.tags} store={store} />}
+        {view === 'schedules' && (
+          <SchedulesView
+            scheduleDefinitions={store.scheduleDefinitions}
+            activeScheduleId={store.activeScheduleId}
+            store={store}
+          />
+        )}
       </main>
 
       <footer className="app-footer">

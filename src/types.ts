@@ -58,6 +58,15 @@ export interface WorkerHoliday {
   note: string;
 }
 
-export type View = 'schedule' | 'workers' | 'shifts' | 'tags';
+export interface ScheduleDefinition {
+  id: string;
+  name: string;
+  /** Total calendar days in the period (e.g. 7 = one week, 14 = fortnight). */
+  lengthDays: number;
+  /** Which days of the week are working days. Indexed 0 (Mon) … 6 (Sun). */
+  workDays: boolean[];
+}
+
+export type View = 'schedule' | 'workers' | 'shifts' | 'tags' | 'schedules';
 
 export type SchedulePeriodPreset = 'week' | 'fortnight' | 'month' | 'custom';

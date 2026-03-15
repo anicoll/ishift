@@ -4,6 +4,9 @@ import type { Store } from '../../store/useStore';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TagBadge } from '../../components/TagBadge';
+import { ColorPicker } from '../../components/ColorPicker';
+import { TagToggleList } from '../../components/TagToggleList';
+import { ViewModeToggle } from '../../components/ViewModeToggle';
 
 interface ShiftFormData {
   name: string;
@@ -44,6 +47,7 @@ export function ShiftsView({ shifts, tags, store }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<ShiftType | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   function openAdd() {
     setEditing(null);
@@ -113,11 +117,60 @@ export function ShiftsView({ shifts, tags, store }: Props) {
     <div className="view-container">
       <div className="view-toolbar">
         <h2 className="view-title">Shift Types</h2>
+        <div className="spacer" />
+        <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         <button className="btn btn--primary" onClick={openAdd}>+ Add Shift Type</button>
       </div>
 
       {shifts.length === 0 ? (
         <p className="empty-hint">No shift types yet. Add your first shift type above.</p>
+      ) : viewMode === 'table' ? (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Time</th>
+              <th>Min Workers</th>
+              <th>Required Tags</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {shifts.map((s, i) => {
+              const reqTags = tags.filter(t => s.requiredTagIds.includes(t.id));
+              return (
+                <tr
+                  key={s.id}
+                  className={dropIndex === i && dragIndex !== i ? 'schedule-row--drop-target' : undefined}
+                  draggable
+                  onDragStart={() => handleDragStart(i)}
+                  onDragOver={e => handleDragOver(e, i)}
+                  onDrop={() => handleDrop(i)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <td>
+                    <span className="shift-name-cell">
+                      <span className="shift-color-dot" style={{ backgroundColor: s.color }} />
+                      {s.name}
+                    </span>
+                  </td>
+                  <td>{formatTime(s.start)} – {formatTime(s.end)}</td>
+                  <td>{s.minWorkers}</td>
+                  <td>
+                    {reqTags.length > 0
+                      ? <span className="workday-chips">{reqTags.map(t => <TagBadge key={t.id} tag={t} size="sm" />)}</span>
+                      : <span className="text-muted">—</span>}
+                  </td>
+                  <td className="action-cell">
+                    <span className="shift-row-handle" title="Drag to reorder" style={{ cursor: 'grab', marginRight: 4 }}>⠿</span>
+                    <button className="btn btn--ghost btn--sm" onClick={() => openEdit(s)}>Edit</button>
+                    <button className="btn btn--ghost btn--sm btn--danger-text" onClick={() => setDeleteTarget(s)}>Delete</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       ) : (
         <div className="card-grid">
           {shifts.map((s, i) => {
@@ -217,47 +270,21 @@ export function ShiftsView({ shifts, tags, store }: Props) {
           </label>
           <div className="form__label">
             Color
-            <div className="color-picker">
-              {PRESET_COLORS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`color-swatch ${form.color === c ? 'color-swatch--active' : ''}`}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setForm(f => ({ ...f, color: c }))}
-                  aria-label={c}
-                />
-              ))}
-              <input
-                type="color"
-                className="color-custom"
-                value={form.color}
-                onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
-                title="Custom color"
-              />
-            </div>
+            <ColorPicker
+              value={form.color}
+              presets={PRESET_COLORS}
+              onChange={(c) => setForm(f => ({ ...f, color: c }))}
+            />
           </div>
           {tags.length > 0 && (
             <div className="form__label">
               Required Tags
               <p className="form__hint">Workers must hold all selected tags to be assignable to this shift.</p>
-              <div className="tag-toggle-list">
-                {tags.map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`tag-toggle ${form.requiredTagIds.includes(t.id) ? 'tag-toggle--active' : ''}`}
-                    style={
-                      form.requiredTagIds.includes(t.id)
-                        ? { backgroundColor: t.color + '22', borderColor: t.color, color: t.color }
-                        : {}
-                    }
-                    onClick={() => toggleTag(t.id)}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
+              <TagToggleList
+                tags={tags}
+                selectedIds={form.requiredTagIds}
+                onToggle={toggleTag}
+              />
             </div>
           )}
           <div className="form__footer">

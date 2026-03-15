@@ -6,7 +6,7 @@ import type {
   Assignment,
   BankHoliday,
   WorkerHoliday,
-  SchedulePeriodPreset,
+  ScheduleDefinition,
 } from '../types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -28,7 +28,21 @@ function persist<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
+// ── constants ─────────────────────────────────────────────────────────────────
+
+export const DEFAULT_SCHEDULE_ID = 'sd_default'
+
 // ── seed data ─────────────────────────────────────────────────────────────────
+
+const SEED_SCHEDULE_DEFINITIONS: ScheduleDefinition[] = [
+  {
+    id: DEFAULT_SCHEDULE_ID,
+    name: 'Work Week',
+    lengthDays: 7,
+    // Mon–Fri only
+    workDays: [true, true, true, true, true, false, false],
+  },
+]
 
 const SEED_TAGS: Tag[] = [
   { id: 't1', name: 'Certified Nurse', color: '#4f8ef7' },
@@ -140,13 +154,13 @@ export interface Store {
   deleteWorkerHoliday: (id: string) => void
   /** Returns true if the worker is on holiday on the given date. */
   workerOnHoliday: (workerId: string, date: string) => boolean
-  // Schedule period
-  schedulePeriod: SchedulePeriodPreset
-  setSchedulePeriod: (period: SchedulePeriodPreset) => void
-  /** Used when schedulePeriod === 'custom'. "YYYY-MM-DD" strings. */
-  customPeriodStart: string
-  customPeriodEnd: string
-  setCustomPeriod: (start: string, end: string) => void
+  // Schedule definitions
+  scheduleDefinitions: ScheduleDefinition[]
+  addScheduleDefinition: (data: Omit<ScheduleDefinition, 'id'>) => void
+  updateScheduleDefinition: (id: string, data: Partial<Omit<ScheduleDefinition, 'id'>>) => void
+  deleteScheduleDefinition: (id: string) => void
+  activeScheduleId: string
+  setActiveScheduleId: (id: string) => void
 }
 
 // ── worker holiday expiry ─────────────────────────────────────────────────────
@@ -203,25 +217,11 @@ export function useStore(): Store {
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>(() =>
     load('ishift_bank_holidays', []),
   )
-  const [schedulePeriod, setSchedulePeriodState] = useState<SchedulePeriodPreset>(() =>
-    load<SchedulePeriodPreset>('ishift_schedule_period', 'week'),
+  const [scheduleDefinitions, setScheduleDefinitions] = useState<ScheduleDefinition[]>(() =>
+    load('ishift_schedule_definitions', SEED_SCHEDULE_DEFINITIONS),
   )
-
-  const todayISO = (() => {
-    const t = new Date()
-    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-  })()
-  const nextWeekISO = (() => {
-    const t = new Date()
-    t.setDate(t.getDate() + 6)
-    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-  })()
-
-  const [customPeriodStart, setCustomPeriodStart] = useState<string>(() =>
-    load('ishift_custom_period_start', todayISO),
-  )
-  const [customPeriodEnd, setCustomPeriodEnd] = useState<string>(() =>
-    load('ishift_custom_period_end', nextWeekISO),
+  const [activeScheduleId, setActiveScheduleIdState] = useState<string>(() =>
+    load('ishift_active_schedule_id', DEFAULT_SCHEDULE_ID),
   )
 
   const [workerHolidays, setWorkerHolidays] = useState<WorkerHoliday[]>(() => {
@@ -251,22 +251,14 @@ export function useStore(): Store {
     persist('ishift_worker_holidays', workerHolidays)
   }, [workerHolidays])
   useEffect(() => {
-    persist('ishift_schedule_period', schedulePeriod)
-  }, [schedulePeriod])
+    persist('ishift_schedule_definitions', scheduleDefinitions)
+  }, [scheduleDefinitions])
   useEffect(() => {
-    persist('ishift_custom_period_start', customPeriodStart)
-  }, [customPeriodStart])
-  useEffect(() => {
-    persist('ishift_custom_period_end', customPeriodEnd)
-  }, [customPeriodEnd])
+    persist('ishift_active_schedule_id', activeScheduleId)
+  }, [activeScheduleId])
 
-  const setSchedulePeriod = useCallback((period: SchedulePeriodPreset) => {
-    setSchedulePeriodState(period)
-  }, [])
-
-  const setCustomPeriod = useCallback((start: string, end: string) => {
-    setCustomPeriodStart(start)
-    setCustomPeriodEnd(end)
+  const setActiveScheduleId = useCallback((id: string) => {
+    setActiveScheduleIdState(id)
   }, [])
 
   // Tags
@@ -359,6 +351,28 @@ export function useStore(): Store {
     [shifts, workers],
   )
 
+  // Schedule Definitions
+  const addScheduleDefinition = useCallback((data: Omit<ScheduleDefinition, 'id'>) => {
+    setScheduleDefinitions((prev) => [...prev, { id: uid(), ...data }])
+  }, [])
+
+  const updateScheduleDefinition = useCallback(
+    (id: string, data: Partial<Omit<ScheduleDefinition, 'id'>>) => {
+      setScheduleDefinitions((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)))
+    },
+    [],
+  )
+
+  const deleteScheduleDefinition = useCallback((id: string) => {
+    setScheduleDefinitions((prev) => prev.filter((s) => s.id !== id))
+    setActiveScheduleIdState((prev) => {
+      // If the deleted schedule was active, fall back to the first remaining one
+      if (prev !== id) return prev
+      const remaining = scheduleDefinitions.filter((s) => s.id !== id)
+      return remaining[0]?.id ?? DEFAULT_SCHEDULE_ID
+    })
+  }, [scheduleDefinitions])
+
   // Bank Holidays
   const addBankHoliday = useCallback((data: Omit<BankHoliday, 'id'>) => {
     setBankHolidays((prev) => [...prev, { id: uid(), ...data }])
@@ -415,10 +429,11 @@ export function useStore(): Store {
     addWorkerHoliday,
     deleteWorkerHoliday,
     workerOnHoliday,
-    schedulePeriod,
-    setSchedulePeriod,
-    customPeriodStart,
-    customPeriodEnd,
-    setCustomPeriod,
+    scheduleDefinitions,
+    addScheduleDefinition,
+    updateScheduleDefinition,
+    deleteScheduleDefinition,
+    activeScheduleId,
+    setActiveScheduleId,
   }
 }
