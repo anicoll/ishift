@@ -28,9 +28,18 @@ export function ExportModal({
   const [startDate, setStartDate] = useState(defaultStart)
   const [endDate, setEndDate] = useState(defaultEnd)
 
-  // Sync defaults when modal opens with a new week
-  const effectiveStart = startDate || defaultStart
-  const effectiveEnd = endDate || defaultEnd
+  // Reset to the current view's date range each time the modal opens
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (prevOpen !== open) {
+    setPrevOpen(open)
+    if (open) {
+      setStartDate(defaultStart)
+      setEndDate(defaultEnd)
+    }
+  }
+
+  const effectiveStart = startDate
+  const effectiveEnd = endDate
   const isValidRange = effectiveStart <= effectiveEnd
 
   const rangeCount = useMemo(() => {
