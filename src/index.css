@@ -412,12 +412,18 @@ body {
 }
 
 .schedule-table__shift-cell {
-  padding: 10px 14px;
+  padding: 0;
   background: var(--bg);
   width: 130px;
   min-width: 130px;
+  vertical-align: middle;
+}
+.shift-cell-inner {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  padding: 10px 14px;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .shift-label {
@@ -426,6 +432,8 @@ body {
   gap: 2px;
   border-left: 3px solid;
   padding-left: 8px;
+  align-self: stretch;
+  justify-content: center;
 }
 .shift-label__time {
   font-size: 11px;

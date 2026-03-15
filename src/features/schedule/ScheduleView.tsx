@@ -535,6 +535,7 @@ export function ScheduleView({
                       onDrop={() => handleRowDrop(i)}
                     >
                       <td className="schedule-table__shift-cell">
+                        <div className="shift-cell-inner">
                         <span
                           className="shift-row-handle"
                           title="Drag to reorder"
@@ -560,6 +561,7 @@ export function ScheduleView({
                             </div>
                           )}
                         </span>
+                        </div>
                       </td>
                       {days.map((day) => {
                         const dateStr = toISODate(day)
