@@ -5,6 +5,8 @@ import (
 	"context"
 	"flag"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -74,23 +76,18 @@ func fixtureRequest() PDFRequest {
 }
 
 // pdfToScreenshot renders a PDF via headless Chromium and returns the viewport
-// as a PNG-encoded byte slice. Chrome's built-in PDF viewer is used so the
-// rendering faithfully reflects what a real user would see.
+// as a PNG-encoded byte slice. The PDF is served over localhost to avoid
+// Chrome's file:// security restrictions in CI environments.
 func pdfToScreenshot(t *testing.T, pdfBytes []byte) []byte {
 	t.Helper()
 
-	tmp, err := os.CreateTemp("", "schedule-*.pdf")
-	if err != nil {
-		t.Fatalf("create temp pdf: %v", err)
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(pdfBytes); err != nil {
-		t.Fatalf("write temp pdf: %v", err)
-	}
-	tmp.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write(pdfBytes)
+	}))
+	defer srv.Close()
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
 		chromedp.DisableGPU,
 		chromedp.NoSandbox,
 		chromedp.WindowSize(1400, 1000),
@@ -102,8 +99,8 @@ func pdfToScreenshot(t *testing.T, pdfBytes []byte) []byte {
 	defer cancel()
 
 	var buf []byte
-	err = chromedp.Run(ctx,
-		chromedp.Navigate("file://"+tmp.Name()),
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(srv.URL),
 		// Wait for Chrome's PDF viewer to finish rendering.
 		chromedp.Sleep(2*time.Second),
 		chromedp.CaptureScreenshot(&buf),
