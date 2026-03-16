@@ -2,13 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"regexp"
 	"testing"
+	"time"
+
+	"github.com/chromedp/chromedp"
+	"github.com/orisano/pixelmatch"
 )
 
-var update = flag.Bool("update", false, "regenerate golden PDF files")
+var update = flag.Bool("update", false, "regenerate golden PNG files")
 
 // fixtureRequest returns a deterministic, representative PDFRequest for snapshot testing.
 // Keep this fixture stable — changes to it intentionally invalidate the golden file.
@@ -68,12 +75,67 @@ func fixtureRequest() PDFRequest {
 	}
 }
 
-// pdfDatePattern matches PDF date strings embedded by fpdf so they can be
-// normalised before comparison, making the snapshot independent of wall-clock time.
-var pdfDatePattern = regexp.MustCompile(`\(D:\d{14}[^)]*\)`)
+// pdfToScreenshot renders a PDF via headless Chromium and returns the viewport
+// as a PNG-encoded byte slice. The PDF is served over localhost to avoid
+// Chrome's file:// security restrictions in CI environments.
+func pdfToScreenshot(t *testing.T, pdfBytes []byte) []byte {
+	t.Helper()
 
-func normalizePDF(b []byte) []byte {
-	return pdfDatePattern.ReplaceAll(b, []byte("(D:00000000000000)"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write(pdfBytes)
+	}))
+	defer srv.Close()
+
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.DisableGPU,
+		chromedp.NoSandbox,
+		chromedp.WindowSize(1400, 1000),
+	)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	var buf []byte
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(srv.URL),
+		// Wait for Chrome's PDF viewer to finish rendering.
+		chromedp.Sleep(2*time.Second),
+		chromedp.CaptureScreenshot(&buf),
+	)
+	if err != nil {
+		t.Fatalf("chromedp screenshot: %v", err)
+	}
+	return buf
+}
+
+// imagesClose reports whether two PNG byte slices are visually equivalent.
+// pixelmatch compares pixels perceptually; threshold 0.1 allows minor
+// anti-aliasing differences. Up to maxDiffPct% of pixels may differ.
+func imagesClose(a, b []byte, maxDiffPct float64) (bool, error) {
+	imgA, err := png.Decode(bytes.NewReader(a))
+	if err != nil {
+		return false, err
+	}
+	imgB, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return false, err
+	}
+
+	bounds := imgA.Bounds()
+	if bounds != imgB.Bounds() {
+		return false, nil
+	}
+
+	diffCount, err := pixelmatch.MatchPixel(imgA, imgB, pixelmatch.Threshold(0.1))
+	if err != nil {
+		return false, err
+	}
+
+	pct := float64(diffCount) / float64(bounds.Dx()*bounds.Dy()) * 100
+	return pct <= maxDiffPct, nil
 }
 
 func TestGoldenPDF(t *testing.T) {
@@ -81,15 +143,16 @@ func TestGoldenPDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateSchedulePDF: %v", err)
 	}
-	got = normalizePDF(got)
 
-	const goldenPath = "testdata/golden.pdf"
+	screenshot := pdfToScreenshot(t, got)
+
+	const goldenPath = "testdata/golden.png"
 
 	if *update {
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
 			t.Fatalf("mkdir testdata: %v", err)
 		}
-		if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+		if err := os.WriteFile(goldenPath, screenshot, 0o644); err != nil {
 			t.Fatalf("write golden: %v", err)
 		}
 		t.Logf("golden file updated: %s", goldenPath)
@@ -98,13 +161,18 @@ func TestGoldenPDF(t *testing.T) {
 
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {
-		t.Fatalf("golden file missing — run `go test -update` to create it: %v", err)
+		t.Fatalf("golden file missing — run `go test ./wasm/... -update` to create it: %v", err)
 	}
-	want = normalizePDF(want)
 
-	if !bytes.Equal(got, want) {
+	// Allow up to 2% of pixels to differ by more than 5/255 per channel
+	// to tolerate minor anti-aliasing variation across Chrome versions.
+	ok, err := imagesClose(screenshot, want, 2.0)
+	if err != nil {
+		t.Fatalf("image comparison: %v", err)
+	}
+	if !ok {
 		t.Errorf(
-			"PDF output does not match golden file %s\n"+
+			"PDF screenshot does not match golden file %s\n"+
 				"If this change is intentional, run: go test ./wasm/... -update",
 			goldenPath,
 		)
